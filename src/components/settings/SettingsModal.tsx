@@ -449,35 +449,6 @@ function FormGroup({
   )
 }
 
-function FormSelect<T extends string | number>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T
-  options: { value: T; label: string }[]
-  onChange: (v: string) => void
-}) {
-  return (
-    <select
-      className="h-9 w-full cursor-pointer rounded-md border px-3 py-2 text-base outline-none"
-      style={{
-        background: 'var(--color-bg-main)',
-        borderColor: 'var(--color-border)',
-        color: 'var(--color-text-primary)',
-      }}
-      value={String(value)}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {options.map((opt) => (
-        <option key={String(opt.value)} value={String(opt.value)}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
 function FormInput({
   value,
   placeholder,
