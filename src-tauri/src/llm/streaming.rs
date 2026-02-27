@@ -1,4 +1,5 @@
 //! SSE stream parser and Tauri event emission for LLM streaming responses.
+#![allow(dead_code)]
 
 use futures::Stream;
 use serde::{Deserialize, Serialize};

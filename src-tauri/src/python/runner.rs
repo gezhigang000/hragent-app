@@ -2,6 +2,7 @@
 //!
 //! Runs Python code in a subprocess with timeout enforcement.
 //! Output is captured from stdout/stderr.
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;

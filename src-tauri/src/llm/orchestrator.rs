@@ -4,6 +4,7 @@
 //! when a conversation should enter (or continue) the structured analysis
 //! flow, and providing step-specific configuration (system prompts, tool
 //! filters, confirmation checkpoints) to the agent loop.
+#![allow(dead_code)]
 
 use crate::llm::prompts;
 use crate::llm::streaming::ChatMessage;

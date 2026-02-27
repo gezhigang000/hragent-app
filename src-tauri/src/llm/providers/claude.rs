@@ -2,6 +2,7 @@
 //!
 //! Uses `x-api-key` auth, `input_schema` for tools, and Anthropic-specific SSE
 //! event types (`content_block_start`, `content_block_delta`, `message_delta`).
+#![allow(dead_code)]
 
 use anyhow::{anyhow, Result};
 use futures::stream::{self, StreamExt};

@@ -7,6 +7,7 @@
 //! 3. Attaches tool definitions from [`tools`] when the provider supports them.
 //! 4. Manages streaming with cancellation support.
 //! 5. Unmasks the response content before returning to the caller.
+#![allow(dead_code)]
 
 use std::sync::Arc;
 use anyhow::Result;

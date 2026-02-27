@@ -1,4 +1,5 @@
 //! SQLite database — schema creation and CRUD operations.
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -580,6 +581,49 @@ impl Database {
         Ok(result)
     }
 
+    /// Get a single generated file by ID, verified to belong to the given conversation.
+    pub fn get_generated_file_for_conversation(
+        &self,
+        id: &str,
+        conversation_id: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let conn = self.conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, conversation_id, message_id, file_name, stored_path,
+                        file_type, file_size, category, description, version,
+                        is_latest, superseded_by, created_by_step, created_at, expires_at
+                 FROM generated_files
+                 WHERE id = ?1 AND conversation_id = ?2",
+            )
+            .context("Failed to prepare get_generated_file_for_conversation")?;
+
+        let result = stmt
+            .query_row(params![id, conversation_id], |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "conversationId": row.get::<_, String>(1)?,
+                    "messageId": row.get::<_, Option<String>>(2)?,
+                    "fileName": row.get::<_, String>(3)?,
+                    "storedPath": row.get::<_, String>(4)?,
+                    "fileType": row.get::<_, String>(5)?,
+                    "fileSize": row.get::<_, i64>(6)?,
+                    "category": row.get::<_, String>(7)?,
+                    "description": row.get::<_, Option<String>>(8)?,
+                    "version": row.get::<_, i32>(9)?,
+                    "isLatest": row.get::<_, bool>(10)?,
+                    "supersededBy": row.get::<_, Option<String>>(11)?,
+                    "createdByStep": row.get::<_, Option<i32>>(12)?,
+                    "createdAt": row.get::<_, String>(13)?,
+                    "expiresAt": row.get::<_, Option<String>>(14)?,
+                }))
+            })
+            .optional()
+            .context("Failed to query generated file for conversation")?;
+
+        Ok(result)
+    }
+
     /// Mark an existing file as superseded by a newer version.
     pub fn mark_file_superseded(&self, old_id: &str, new_id: &str) -> Result<()> {
         let conn = self.conn()?;
@@ -1150,6 +1194,35 @@ mod tests {
         let c2_files = db.get_uploaded_files_for_conversation("c2").unwrap();
         assert_eq!(c2_files.len(), 1);
         assert_eq!(c2_files[0]["originalName"], "data2.csv");
+    }
+
+    // -- Generated file conversation isolation ----------------------------------
+
+    #[test]
+    fn test_generated_file_conversation_isolation() {
+        let (db, _dir) = test_db();
+
+        db.create_conversation("c1", "Conv 1").unwrap();
+        db.create_conversation("c2", "Conv 2").unwrap();
+
+        db.insert_generated_file(
+            "gf1", "c1", None, "report.html", "reports/report.html",
+            "html", 5000, "report", Some("Test report"), 1, true, None, Some(5), None,
+        ).unwrap();
+
+        // Correct conversation_id should return the file
+        let file = db.get_generated_file_for_conversation("gf1", "c1").unwrap();
+        assert!(file.is_some());
+        assert_eq!(file.as_ref().unwrap()["fileName"], "report.html");
+        assert_eq!(file.as_ref().unwrap()["storedPath"], "reports/report.html");
+
+        // Wrong conversation_id should return None (isolation)
+        let file = db.get_generated_file_for_conversation("gf1", "c2").unwrap();
+        assert!(file.is_none(), "Generated file from c1 should not be visible in c2");
+
+        // Non-existent file should return None
+        let file = db.get_generated_file_for_conversation("nonexistent", "c1").unwrap();
+        assert!(file.is_none());
     }
 
     // -- Conversation title update ---------------------------------------------

@@ -2,6 +2,7 @@
 //!
 //! Provides high-quality search results suitable for LLM consumption.
 //! API docs: https://docs.tavily.com/docs/rest-api/api-reference
+#![allow(dead_code)]
 
 use anyhow::{anyhow, Result};
 use reqwest::Client;

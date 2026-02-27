@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod claude;
 pub mod deepseek_r1;
 pub mod deepseek_v3;

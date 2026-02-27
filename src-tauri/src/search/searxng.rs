@@ -3,6 +3,7 @@
 //! Uses public SearXNG instances for web search without requiring an API key.
 //! Falls back through multiple instances if one is unavailable.
 //! API docs: https://docs.searxng.org/dev/search_api.html
+#![allow(dead_code)]
 
 use anyhow::{anyhow, Result};
 use log::{info, warn};

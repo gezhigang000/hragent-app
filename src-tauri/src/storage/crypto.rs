@@ -7,6 +7,7 @@
 //!
 //! All sensitive data is encrypted at rest using AES-256-GCM with random
 //! 96-bit nonces. Encrypted output format: "nonce_hex:ciphertext_hex".
+#![allow(dead_code)]
 
 use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},

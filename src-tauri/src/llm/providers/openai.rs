@@ -5,7 +5,8 @@
 //!
 //! This module also exposes `pub(super)` helpers that other OpenAI-compatible
 //! providers (DeepSeek V3, DeepSeek R1, Volcano) reuse for request building,
-//! response parsing, and SSE stream processing.
+//! response parsing, and SSE stream process.
+#![allow(dead_code)]
 
 use anyhow::{anyhow, Result};
 use futures::stream::{self, StreamExt};

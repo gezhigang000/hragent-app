@@ -6,6 +6,7 @@
 //! Pattern matching is implemented without the `regex` crate — uses simple
 //! character-level scanning for emails, phones, company suffixes, and
 //! keyword-triggered Chinese person names.
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 

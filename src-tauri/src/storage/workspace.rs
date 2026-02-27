@@ -1,4 +1,5 @@
 //! Workspace directory structure creation and validation.
+#![allow(dead_code)]
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -8,6 +8,7 @@
 //!
 //! Tool definitions are cached at first access via `LazyLock` to avoid
 //! rebuilding the `Vec<ToolDefinition>` on every LLM request.
+#![allow(dead_code)]
 
 use std::sync::LazyLock;
 use serde_json::json;

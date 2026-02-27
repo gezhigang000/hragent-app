@@ -8,6 +8,7 @@
 //! DeepSeek-R1) for reasoning tasks using the same API key.
 //!
 //! **Important**: Analysis tasks always use the primary model with tools
+#![allow(dead_code)]
 //! enabled, because the 5-step analysis workflow requires tool calls.
 
 use crate::llm::streaming::ChatMessage;
