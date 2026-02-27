@@ -1,0 +1,44 @@
+pub mod claude;
+pub mod deepseek_r1;
+pub mod deepseek_v3;
+pub mod openai;
+pub mod qwen;
+pub mod volcano;
+
+use anyhow::Result;
+
+use crate::llm::streaming::{LlmRequest, LlmResponse, StreamBox};
+
+/// Trait that all LLM providers must implement.
+///
+/// Each provider handles its own API format, authentication,
+/// and response parsing. Uses Rust's native RPITIT (return position
+/// impl Trait in trait), stable since Rust 1.75, instead of the
+/// `async_trait` macro.
+pub trait LlmProviderTrait: Send + Sync {
+    /// Provider display name (e.g. "DeepSeek V3", "Claude").
+    fn name(&self) -> &str;
+
+    /// Whether this provider supports tool use.
+    fn supports_tools(&self) -> bool;
+
+    /// Whether this provider supports streaming.
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    /// Send a complete (non-streaming) request.
+    fn send(
+        &self,
+        request: LlmRequest,
+    ) -> impl std::future::Future<Output = Result<LlmResponse>> + Send;
+
+    /// Send a streaming request, returning a stream of events.
+    fn stream(
+        &self,
+        request: LlmRequest,
+    ) -> impl std::future::Future<Output = Result<StreamBox>> + Send;
+
+    /// Validate the API key by making a minimal test request.
+    fn validate_key(&self) -> impl std::future::Future<Output = Result<bool>> + Send;
+}
