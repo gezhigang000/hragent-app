@@ -18,7 +18,6 @@ jobs:
           - platform: windows-latest
             artifact-name: windows-installers
             artifact-path: |
-              src-tauri/target/release/bundle/msi/*.msi
               src-tauri/target/release/bundle/nsis/*.exe
           - platform: macos-14
             artifact-name: macos-arm-installers
