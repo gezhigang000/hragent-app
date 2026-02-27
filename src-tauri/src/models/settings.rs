@@ -44,8 +44,7 @@ impl Default for AppSettings {
 
         Self {
             primary_model: "deepseek-v3".to_string(),
-            // Built-in key for testing; remove before production release.
-            primary_api_key: "sk-4330c18940b84709a41ad56ea575d3ce".to_string(),
+            primary_api_key: String::new(),
             auto_model_routing: true,
             workspace_path: default_workspace,
             analysis_threshold: 1.65,

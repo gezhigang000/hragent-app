@@ -28,8 +28,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   primaryModel: 'deepseek-v3',
-  // Built-in key for testing; remove before production release.
-  primaryApiKey: 'sk-4330c18940b84709a41ad56ea575d3ce',
+  primaryApiKey: '',
   autoModelRouting: true,
   workspacePath: '',  // resolved at runtime by backend
   analysisThreshold: 1.65,

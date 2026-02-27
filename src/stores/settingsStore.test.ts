@@ -15,7 +15,7 @@ describe('settingsStore — defaults', () => {
   it('starts with default settings', () => {
     const state = useSettingsStore.getState()
     expect(state.primaryModel).toBe('deepseek-v3')
-    expect(state.primaryApiKey).toBe('sk-4330c18940b84709a41ad56ea575d3ce')
+    expect(state.primaryApiKey).toBe('')
     expect(state.autoModelRouting).toBe(true)
     expect(state.analysisThreshold).toBe(1.65)
     expect(state.dataMaskingLevel).toBe('strict')
