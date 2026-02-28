@@ -25,7 +25,7 @@ export function UserBubble({ message }: UserBubbleProps) {
         >
           我
         </span>
-        <Avatar variant="user" label="我" />
+        <Avatar variant="user" />
       </div>
 
       {/* Body — offset by avatar width, right-aligned */}
