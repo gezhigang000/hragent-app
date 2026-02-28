@@ -1,7 +1,7 @@
 [package]
 name = "aijia"
 version = "0.2.0"
-description = "AI小家 — 组织咨询专家"
+description = "AI小家 — 组织专家，工作助手"
 authors = ["AI小家 Team"]
 license = "MIT"
 edition = "2021"

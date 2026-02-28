@@ -479,7 +479,7 @@ fn render_conversation_html(
 
     // Footer
     html.push_str(&format!(
-        r#"<div class="footer">Exported from AI小家 (组织咨询专家) — {}</div>
+        r#"<div class="footer">Exported from AI小家 (组织专家，工作助手) — {}</div>
 </body>
 </html>"#,
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),

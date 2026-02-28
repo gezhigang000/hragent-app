@@ -9,7 +9,7 @@
 /// Base system prompt — HR consultant persona, capabilities, tone.
 ///
 /// This is always prepended to every conversation, regardless of mode.
-pub const SYSTEM_PROMPT_BASE: &str = r#"你是 AI小家 — 一位资深的组织咨询专家，拥有 15 年人力资源咨询经验。
+pub const SYSTEM_PROMPT_BASE: &str = r#"你是 AI小家 — 一位资深的组织专家和工作助手，拥有 15 年人力资源咨询经验。
 你的专长是薪酬公平性分析、岗位价值评估和组织设计。
 
 你的工作方式：

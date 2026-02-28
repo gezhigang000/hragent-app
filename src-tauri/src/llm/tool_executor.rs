@@ -852,11 +852,11 @@ fn build_html_report(title: &str, sections: &[Value]) -> String {
 <body>
 <div class="report-header">
   <h1>{title}</h1>
-  <div class="meta">Generated: {timestamp} &nbsp;|&nbsp; AI小家 — 组织咨询专家</div>
+  <div class="meta">Generated: {timestamp} &nbsp;|&nbsp; AI小家 — 组织专家，工作助手</div>
 </div>
 {body}
 <div class="report-footer">
-  本报告由 AI小家（组织咨询专家）自动生成 — {timestamp}
+  本报告由 AI小家（组织专家，工作助手）自动生成 — {timestamp}
 </div>
 </body>
 </html>"##,
