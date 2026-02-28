@@ -52,6 +52,23 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Cache Python runtime
+        id: python-cache
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/python-runtime
+          key: python-runtime-${{ runner.os }}-${{ hashFiles('src-tauri/requirements.txt') }}
+
+      - name: Setup bundled Python runtime
+        if: steps.python-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            pwsh scripts/setup-python.ps1
+          else
+            bash scripts/setup-python.sh
+          fi
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:

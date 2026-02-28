@@ -183,7 +183,7 @@ async fn handle_execute_python(ctx: &ToolContext, args: &Value) -> Result<String
         purpose, code.len(), ctx.workspace_path);
     info!("[TOOL:execute_python] code:\n{}", code);
 
-    let runner = PythonRunner::new(ctx.workspace_path.clone());
+    let runner = PythonRunner::new(ctx.workspace_path.clone(), ctx.app_handle.as_ref());
     let result = runner.execute(code).await?;
 
     info!("[TOOL:execute_python] exit_code={} time={}ms timed_out={} stdout_len={} stderr_len={}",
@@ -299,7 +299,7 @@ async fn handle_analyze_file(ctx: &ToolContext, args: &Value) -> Result<String> 
 
     let full_path = ctx.file_manager.full_path(stored_path);
 
-    let runner = PythonRunner::new(ctx.workspace_path.clone());
+    let runner = PythonRunner::new(ctx.workspace_path.clone(), ctx.app_handle.as_ref());
     let parse_result = parser::parse_file(&runner, &full_path).await?;
 
     // Return both the relative stored_path (for DB references) and the
@@ -400,7 +400,7 @@ async fn handle_generate_chart(ctx: &ToolContext, args: &Value) -> Result<String
         &output_path.to_string_lossy(),
     );
 
-    let runner = PythonRunner::new(ctx.workspace_path.clone());
+    let runner = PythonRunner::new(ctx.workspace_path.clone(), ctx.app_handle.as_ref());
     let result = runner.execute(&python_code).await?;
 
     if result.exit_code != 0 {
@@ -463,7 +463,7 @@ async fn handle_hypothesis_test(ctx: &ToolContext, args: &Value) -> Result<Strin
     let python_code =
         build_hypothesis_test_python(test_type, &group_names, data_source, significance_level)?;
 
-    let runner = PythonRunner::new(ctx.workspace_path.clone());
+    let runner = PythonRunner::new(ctx.workspace_path.clone(), ctx.app_handle.as_ref());
     let result = runner.execute(&python_code).await?;
 
     if result.exit_code != 0 {
@@ -489,7 +489,7 @@ async fn handle_detect_anomalies(ctx: &ToolContext, args: &Value) -> Result<Stri
 
     let python_code = build_anomaly_detection_python(column, method, threshold, group_by)?;
 
-    let runner = PythonRunner::new(ctx.workspace_path.clone());
+    let runner = PythonRunner::new(ctx.workspace_path.clone(), ctx.app_handle.as_ref());
     let result = runner.execute(&python_code).await?;
 
     if result.exit_code != 0 {
@@ -539,7 +539,7 @@ async fn handle_export_data(ctx: &ToolContext, args: &Value) -> Result<String> {
 
     let python_code = build_export_python(data, format, &filename)?;
 
-    let runner = PythonRunner::new(ctx.workspace_path.clone());
+    let runner = PythonRunner::new(ctx.workspace_path.clone(), ctx.app_handle.as_ref());
     let result = runner.execute(&python_code).await?;
 
     if result.exit_code != 0 {

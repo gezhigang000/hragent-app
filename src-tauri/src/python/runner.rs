@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use anyhow::{anyhow, Context, Result};
+use log::info;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
@@ -32,23 +33,34 @@ pub struct ExecutionResult {
 /// Python code runner with sandbox enforcement.
 pub struct PythonRunner {
     workspace_path: PathBuf,
+    python_binary: PathBuf,
+    python_home: Option<PathBuf>,
     sandbox: SandboxConfig,
 }
 
 impl PythonRunner {
     /// Create a new runner for the given workspace.
-    pub fn new(workspace_path: PathBuf) -> Self {
+    ///
+    /// If `app_handle` is provided, attempts to locate a bundled Python runtime
+    /// inside the Tauri resource directory. Falls back to system `python3`.
+    pub fn new(workspace_path: PathBuf, app_handle: Option<&tauri::AppHandle>) -> Self {
         let sandbox = SandboxConfig::for_workspace(&workspace_path);
+        let (python_binary, python_home) = resolve_python_path(app_handle);
         Self {
             workspace_path,
+            python_binary,
+            python_home,
             sandbox,
         }
     }
 
     /// Create a runner with custom sandbox config.
-    pub fn with_config(workspace_path: PathBuf, sandbox: SandboxConfig) -> Self {
+    pub fn with_config(workspace_path: PathBuf, sandbox: SandboxConfig, app_handle: Option<&tauri::AppHandle>) -> Self {
+        let (python_binary, python_home) = resolve_python_path(app_handle);
         Self {
             workspace_path,
+            python_binary,
+            python_home,
             sandbox,
         }
     }
@@ -93,22 +105,31 @@ impl PythonRunner {
         self.run_python_file(file_path).await
     }
 
-    /// Internal: spawn python3 and run a file with timeout.
+    /// Internal: spawn python and run a file with timeout.
     async fn run_python_file(&self, file_path: &Path) -> Result<ExecutionResult> {
         let start = std::time::Instant::now();
         let timeout = std::time::Duration::from_secs(self.sandbox.timeout_seconds as u64);
 
-        let mut child = Command::new("python3")
-            .arg("-u") // unbuffered output
+        let mut cmd = Command::new(&self.python_binary);
+        cmd.arg("-u") // unbuffered output
             .arg(file_path)
             .current_dir(&self.workspace_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env("PYTHONIOENCODING", "utf-8")    // Force UTF-8 output on all platforms
             .env("PYTHONLEGACYWINDOWSSTDIO", "0") // Disable legacy Windows stdio
-            .kill_on_drop(true)
+            .kill_on_drop(true);
+
+        // When using bundled Python, set PYTHONHOME and clear PYTHONPATH
+        // to isolate from any system Python installation.
+        if let Some(ref home) = self.python_home {
+            cmd.env("PYTHONHOME", home);
+            cmd.env_remove("PYTHONPATH");
+        }
+
+        let mut child = cmd
             .spawn()
-            .context("Failed to spawn python3 process")?;
+            .context(format!("Failed to spawn Python process: {}", self.python_binary.display()))?;
 
         // Take stdout/stderr handles out of the child so they can be read concurrently.
         // This avoids pipe buffer deadlock: if stdout fills its OS buffer while we
@@ -187,13 +208,13 @@ impl PythonRunner {
         }
     }
 
-    /// Check if python3 is available on the system.
-    pub async fn check_python_available() -> Result<String> {
-        let output = Command::new("python3")
+    /// Check if the configured Python binary is available.
+    pub async fn check_python_available(&self) -> Result<String> {
+        let output = Command::new(&self.python_binary)
             .arg("--version")
             .output()
             .await
-            .context("python3 not found on system")?;
+            .context(format!("Python not found: {}", self.python_binary.display()))?;
 
         let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if version.is_empty() {
@@ -205,13 +226,49 @@ impl PythonRunner {
     }
 }
 
+/// Resolve the Python binary path.
+///
+/// 1. Try bundled `{resource_dir}/python-runtime/bin/python3` (macOS/Linux)
+/// 2. Try bundled `{resource_dir}/python-runtime/python.exe` (Windows)
+/// 3. Fallback to system `python3` (development mode)
+///
+/// Returns `(python_binary, python_home)`. `python_home` is `Some` only when
+/// using the bundled runtime.
+fn resolve_python_path(app_handle: Option<&tauri::AppHandle>) -> (PathBuf, Option<PathBuf>) {
+    use tauri::Manager;
+
+    if let Some(handle) = app_handle {
+        if let Ok(resource_dir) = handle.path().resource_dir() {
+            let runtime_dir = resource_dir.join("python-runtime");
+
+            // macOS / Linux
+            let unix_bin = runtime_dir.join("bin").join("python3");
+            if unix_bin.exists() {
+                info!("Using bundled Python: {}", unix_bin.display());
+                return (unix_bin, Some(runtime_dir));
+            }
+
+            // Windows
+            let win_bin = runtime_dir.join("python.exe");
+            if win_bin.exists() {
+                info!("Using bundled Python: {}", win_bin.display());
+                return (win_bin, Some(runtime_dir));
+            }
+        }
+    }
+
+    info!("Using system Python (bundled runtime not found)");
+    (PathBuf::from("python3"), None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
     async fn test_check_python_available() {
-        let result = PythonRunner::check_python_available().await;
+        let runner = PythonRunner::new(PathBuf::from("/tmp"), None);
+        let result = runner.check_python_available().await;
         // Python3 should be available on most dev machines
         if let Ok(version) = result {
             assert!(version.contains("Python") || version.contains("python"));
@@ -230,5 +287,12 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"exitCode\":0"));
         assert!(json.contains("\"timedOut\":false"));
+    }
+
+    #[test]
+    fn test_resolve_python_path_no_handle() {
+        let (binary, home) = resolve_python_path(None);
+        assert_eq!(binary, PathBuf::from("python3"));
+        assert!(home.is_none());
     }
 }

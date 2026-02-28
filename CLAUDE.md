@@ -6,6 +6,9 @@
 
 ```
 code/
+├── scripts/                     # 构建辅助脚本
+│   ├── setup-python.sh          # macOS/Linux: 下载 Python standalone + 安装 pip 依赖
+│   └── setup-python.ps1         # Windows: 同上 PowerShell 版
 ├── src/                          # React + TypeScript 前端
 │   ├── App.tsx                   # 入口，挂载 useStreaming + ToastContainer
 │   ├── components/
@@ -17,7 +20,7 @@ code/
 │   │   └── common/               # Avatar, ToastContainer
 │   ├── stores/                   # Zustand: chatStore, settingsStore, analysisStore, notificationStore
 │   ├── hooks/                    # useChat, useStreaming, useFileUpload, useTauriEvent
-│   ├── lib/                      # tauri.ts (IPC), format.ts
+│   ├── lib/                      # tauri.ts (IPC), markdown.ts (Markdown→HTML 渲染), format.ts
 │   ├── types/                    # message.ts, analysis.ts, settings.ts
 │   └── styles/                   # globals.css (TailwindCSS 4 Design Tokens)
 ├── src-tauri/                    # Rust 后端
@@ -25,7 +28,7 @@ code/
 │       ├── lib.rs                # Tauri 应用构建 + 命令注册
 │       ├── commands/             # chat, file, settings (IPC 命令)
 │       ├── llm/                  # gateway, router, providers/, tools, masking, streaming,
-│       │                         # prompts (系统提示词库, STEP0~5), orchestrator (6步分析编排器)
+│       │                         # prompts (系统提示词库, BASE:组织咨询+工作助手 + DAILY:4大类场景 + STEP0~5), orchestrator (6步分析编排器)
 │       ├── search/               # tavily, searxng
 │       ├── storage/              # file_store (JSON/JSONL), crypto, workspace, file_manager
 │       ├── python/               # runner, parser, sandbox
@@ -43,6 +46,7 @@ pnpm tauri build          # 构建生产包
 pnpm test                 # 运行前端测试 (vitest)
 pnpm test:watch           # 前端测试监听模式
 cargo test --manifest-path src-tauri/Cargo.toml  # 运行 Rust 测试
+bash scripts/setup-python.sh  # 下载打包 Python 运行时（构建前执行一次）
 ```
 
 ## 关键设计决策
@@ -98,6 +102,12 @@ cargo test --manifest-path src-tauri/Cargo.toml  # 运行 Rust 测试
 25. **流式事件协议（单点发射原则）** — `streaming:done` **仅由 `AgentGuard::clear()` 发射**，`finish_agent()` 不再发射。新增 `streaming:step-reset` 事件用于跨步骤流式 UI 连续性。前端 `chatStore.resetConversationStreamContent()` 处理此事件。`StreamingBubble` 的 `TypingIndicator` 仅在 `!content && !activeTool` 时显示。
 
 26. **文件存储写锁 + 原子写入** — `AppStorage` 使用 `Mutex<()>` 序列化所有写操作，防止并发读-改-写竞态。读操作无需加锁。所有 JSON 文件写入采用原子模式（写临时文件 → `fs::rename`），防止崩溃导致文件损坏。JSONL 文件使用追加写入，超过容量阈值自动分片（消息 100 条/片，审计日志 2MB/片，记忆 1MB/片）。
+
+27. **Markdown 渲染器防死循环** — 自研 `markdownToHtml()`（`lib/markdown.ts`）逐行解析。未被任何 handler 匹配的行（如 `#tag` 不含空格、`#####` 超过 4 级）通过兜底 else 分支强制渲染为段落并递增 `i`，防止无限循环导致 CPU 100%。
+
+28. **InputBar 自动聚焦** — `InputBar` 监听 `activeConversationId` + `isStreaming` 变化，切换/新建会话或回复完成时自动 `focus()` 输入框（`requestAnimationFrame` 确保 DOM 就绪）。
+
+29. **Python 运行时打包（开箱即用）** — 使用 `python-build-standalone`（Astral 维护）将 Python 3.12 + pip 依赖打包进安装包。`runner.rs` 的 `resolve_python_path()` 优先查找 `{resource_dir}/python-runtime/bin/python3`（macOS）或 `python-runtime/python.exe`（Windows），fallback 到系统 `python3`（开发模式）。打包模式下设置 `PYTHONHOME`、清除 `PYTHONPATH`。`scripts/setup-python.sh` / `setup-python.ps1` 负责下载 + 安装 + 瘦身。依赖列表在 `src-tauri/requirements.txt`。
 
 ## 数据存储位置
 

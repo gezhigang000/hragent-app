@@ -1,0 +1,3 @@
+# This directory is populated by scripts/setup-python.sh
+# It must exist for Tauri's bundle.resources validation during cargo check.
+# In dev mode, the app falls back to system python3.
