@@ -1222,8 +1222,13 @@ fn finish_agent(
 
         // Save assistant message to DB (with unmasked content)
         let content_json = content_value.to_string();
+        log::info!(
+            "[finish_agent] Saving message id={} conv={} content_len={}",
+            assistant_id, conversation_id, content_json.len()
+        );
         match db.insert_message(assistant_id, conversation_id, "assistant", &content_json) {
             Ok(_) => {
+                log::info!("[finish_agent] Message saved, emitting message:updated for {}", assistant_id);
                 // Emit full message ONLY after DB write succeeds.
                 // This prevents the UI from showing a message that would disappear on refresh.
                 if let Err(e) = app.emit(

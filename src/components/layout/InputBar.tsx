@@ -5,6 +5,7 @@
  * Wired to useChat (send / stop) and useFileUpload (native file picker).
  */
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
+import { useChatStore } from '@/stores/chatStore'
 import { useChat } from '@/hooks/useChat'
 import { useFileUpload, type UploadedFile } from '@/hooks/useFileUpload'
 import type { PendingFileInfo } from '@/hooks/useChat'
@@ -24,6 +25,16 @@ export function InputBar() {
   const { sendUserMessage, isStreaming, stopCurrentStream } = useChat()
   const { isUploading, selectAndUploadFile } = useFileUpload()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const activeConversationId = useChatStore((s) => s.activeConversationId)
+
+  // Auto-focus textarea when switching conversations or when streaming completes
+  useEffect(() => {
+    if (!isStreaming) {
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus()
+      })
+    }
+  }, [activeConversationId, isStreaming])
 
   // Auto-resize textarea based on content
   useEffect(() => {

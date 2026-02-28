@@ -279,6 +279,7 @@ export function useChat() {
     const convId = store.activeConversationId
     if (convId) {
       store.clearConversationStreamState(convId)
+      store.removeBusyConversation(convId)
       stopStreaming(convId).catch((err) => {
         console.error('[useChat] stopStreaming IPC failed:', err)
       })

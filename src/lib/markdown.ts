@@ -260,6 +260,14 @@ export function markdownToHtml(md: string): string {
       output.push(
         `<p style="margin:6px 0;color:var(--color-text-secondary);font-size:0.88rem;line-height:1.7">${paraLines.map(inlineFmt).join('<br/>')}</p>`,
       )
+    } else {
+      // Safety: if a line was not collected by any handler (e.g. "#tag" without
+      // space doesn't match heading regex, but paragraph excludes "#" prefix),
+      // render it as a standalone paragraph and advance to prevent infinite loop.
+      output.push(
+        `<p style="margin:6px 0;color:var(--color-text-secondary);font-size:0.88rem;line-height:1.7">${inlineFmt(lines[i])}</p>`,
+      )
+      i++
     }
   }
 
