@@ -59,15 +59,14 @@ jobs:
           path: src-tauri/python-runtime
           key: python-runtime-${{ runner.os }}-${{ hashFiles('src-tauri/requirements.txt') }}
 
-      - name: Setup bundled Python runtime
-        if: steps.python-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            pwsh scripts/setup-python.ps1
-          else
-            bash scripts/setup-python.sh
-          fi
+      - name: Setup bundled Python runtime (macOS/Linux)
+        if: steps.python-cache.outputs.cache-hit != 'true' && runner.os != 'Windows'
+        run: bash scripts/setup-python.sh
+
+      - name: Setup bundled Python runtime (Windows)
+        if: steps.python-cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\setup-python.ps1
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0

@@ -34,7 +34,27 @@ $archive = Join-Path $tmpDir $FILENAME
 
 try {
     $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $URL -OutFile $archive -UseBasicParsing
+    # Retry up to 3 times — GitHub releases can be flaky on CI runners
+    $maxRetries = 3
+    for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+        try {
+            Write-Host "  Attempt $attempt of $maxRetries..."
+            Invoke-WebRequest -Uri $URL -OutFile $archive -UseBasicParsing
+            # Verify file is not truncated (Python standalone is >20MB)
+            $fileSize = (Get-Item $archive).Length
+            if ($fileSize -lt 20MB) {
+                throw "Downloaded file too small ($([math]::Round($fileSize/1MB, 1)) MB) — likely truncated"
+            }
+            Write-Host "  Downloaded $([math]::Round($fileSize/1MB, 1)) MB"
+            break
+        } catch {
+            if ($attempt -eq $maxRetries) {
+                throw "Download failed after $maxRetries attempts: $_"
+            }
+            Write-Host "  Attempt $attempt failed: $_ — retrying in 5s..."
+            Start-Sleep -Seconds 5
+        }
+    }
 } catch {
     Write-Error "Download failed: $_"
     exit 1
@@ -47,11 +67,21 @@ if (Test-Path $TARGET_DIR) {
 }
 
 $parentDir = Split-Path $TARGET_DIR -Parent
-# tar.exe is built into Windows 10+
-tar xzf $archive -C $parentDir
+# tar.exe is built into Windows 10+ — use full path to avoid Git Bash's /usr/bin/tar
+$tarExe = "$env:SystemRoot\System32\tar.exe"
+if (-not (Test-Path $tarExe)) { $tarExe = "tar" }
+& $tarExe xzf $archive -C $parentDir
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "tar extraction failed (exit code $LASTEXITCODE). Archive may be corrupted."
+    exit 1
+}
 
 # python-build-standalone archives contain a top-level `python\` directory
 $extractedDir = Join-Path $parentDir "python"
+if (-not (Test-Path $extractedDir)) {
+    Write-Error "Expected directory '$extractedDir' not found after extraction. Archive format may have changed."
+    exit 1
+}
 Rename-Item $extractedDir $TARGET_DIR
 
 Write-Host "Python binary: $PYTHON_BIN"
