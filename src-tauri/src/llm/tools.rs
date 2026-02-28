@@ -92,26 +92,73 @@ fn build_tool_definitions() -> Vec<ToolDefinition> {
         // ─── 4. Report Generation ────────────────────────────
         ToolDefinition {
             name: "generate_report".to_string(),
-            description: "Generate a formatted analysis report in HTML. The report includes \
-                executive summary, methodology, findings, and recommendations."
+            description: "Generate a professional analysis report as a downloadable HTML file. \
+                Supports rich content: text with markdown, structured tables, metric cards, \
+                bullet lists, and highlighted callouts. Use this for the final comprehensive \
+                report at the end of analysis."
                 .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
                     "title": {
                         "type": "string",
-                        "description": "Report title"
+                        "description": "Report title (e.g. '薪酬公平性分析报告')"
                     },
                     "sections": {
                         "type": "array",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "heading": { "type": "string" },
-                                "content": { "type": "string" }
-                            }
+                                "heading": {
+                                    "type": "string",
+                                    "description": "Section heading"
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "Text content (supports markdown: **bold**, `code`, tables, lists, headers)"
+                                },
+                                "metrics": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "label": { "type": "string" },
+                                            "value": { "type": "string" },
+                                            "subtitle": { "type": "string" },
+                                            "state": { "type": "string", "enum": ["good", "warn", "bad", "neutral"] }
+                                        },
+                                        "required": ["label", "value"]
+                                    },
+                                    "description": "Metric cards displayed as a grid"
+                                },
+                                "table": {
+                                    "type": "object",
+                                    "properties": {
+                                        "title": { "type": "string" },
+                                        "columns": {
+                                            "type": "array",
+                                            "items": { "type": "string" }
+                                        },
+                                        "rows": {
+                                            "type": "array",
+                                            "items": { "type": "array", "items": { "type": "string" } }
+                                        }
+                                    },
+                                    "description": "Structured data table"
+                                },
+                                "items": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Bullet list items"
+                                },
+                                "highlight": {
+                                    "type": "string",
+                                    "description": "Highlighted callout text for key findings"
+                                }
+                            },
+                            "required": ["heading"]
                         },
-                        "description": "Report sections with heading and content"
+                        "description": "Report sections. Each section must have a heading and can include any combination of content, metrics, table, items, highlight."
                     },
                     "format": {
                         "type": "string",
@@ -299,6 +346,11 @@ pub fn get_tool_by_name(name: &str) -> Option<ToolDefinition> {
 /// 5-step compensation analysis workflow.
 pub fn get_tools_for_step(step: u32) -> Vec<String> {
     match step {
+        // Step 0: Analysis direction confirmation
+        0 => vec![
+            "analyze_file".to_string(),
+            "save_analysis_note".to_string(),
+        ],
         // Step 1: Data cleaning and understanding
         1 => vec![
             "analyze_file".to_string(),

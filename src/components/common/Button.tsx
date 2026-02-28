@@ -2,7 +2,7 @@
  * Button — primary, secondary, ghost variants.
  * Based on visual-standard.md §7.1.
  */
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost'
@@ -16,14 +16,16 @@ export function Button({
   style,
   ...props
 }: ButtonProps) {
+  const [hovered, setHovered] = useState(false)
+
   const baseClasses =
     'inline-flex items-center gap-1.5 rounded-sm px-[18px] py-2 text-base font-medium cursor-pointer transition-all duration-150'
 
   const variantStyles: Record<string, React.CSSProperties> = {
     primary: {
-      background: 'var(--color-accent)',
-      borderColor: 'var(--color-accent)',
-      color: 'var(--color-text-on-accent)',
+      background: hovered ? 'var(--color-primary-hover)' : 'var(--color-primary)',
+      borderColor: hovered ? 'var(--color-primary-hover)' : 'var(--color-primary)',
+      color: 'var(--color-text-on-primary)',
     },
     secondary: {
       background: 'var(--color-bg-card)',
@@ -41,6 +43,8 @@ export function Button({
     <button
       className={`${baseClasses} border ${className}`}
       style={{ ...variantStyles[variant], ...style }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       {...props}
     >
       {children}

@@ -8,16 +8,16 @@ import { TypingIndicator } from './TypingIndicator'
 import { markdownToHtml } from '@/lib/markdown'
 
 const TOOL_LABELS: Record<string, string> = {
-  execute_python: '执行 Python 代码',
-  analyze_file: '解析文件',
-  save_analysis_note: '保存分析结果',
-  update_progress: '更新进度',
-  web_search: '联网搜索',
-  generate_report: '生成报告',
-  export_data: '导出数据',
-  hypothesis_test: '假设检验',
-  detect_anomalies: '异常检测',
-  generate_chart: '生成图表',
+  execute_python: '正在分析数据...',
+  analyze_file: '正在读取文件...',
+  save_analysis_note: '正在保存分析记录...',
+  update_progress: '正在更新分析进度...',
+  web_search: '正在搜索相关信息...',
+  generate_report: '正在生成报告...',
+  export_data: '正在导出数据...',
+  hypothesis_test: '正在进行统计检验...',
+  detect_anomalies: '正在检测异常数据...',
+  generate_chart: '正在生成图表...',
 }
 
 interface StreamingBubbleProps {
@@ -42,7 +42,7 @@ export function StreamingBubble({ content }: StreamingBubbleProps) {
       </div>
 
       {/* Body — offset by avatar width */}
-      <div style={{ paddingLeft: '36px' }}>
+      <div className="pl-9">
         {content ? (
           <div
             className="text-md leading-relaxed"
@@ -59,9 +59,9 @@ export function StreamingBubble({ content }: StreamingBubbleProps) {
             </svg>
             <span>{TOOL_LABELS[activeTool.toolName] || activeTool.toolName}</span>
           </div>
-        ) : (
+        ) : !content ? (
           <TypingIndicator />
-        )}
+        ) : null}
       </div>
     </div>
   )

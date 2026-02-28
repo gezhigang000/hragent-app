@@ -10,27 +10,27 @@ const FILE_TYPE_CONFIG: Record<
 > = {
   excel: {
     label: 'XLS',
-    bg: 'rgba(52,199,89,0.15)',
+    bg: 'var(--color-filetype-green-bg)',
     color: 'var(--color-semantic-green)',
   },
   csv: {
     label: 'CSV',
-    bg: 'rgba(52,199,89,0.15)',
+    bg: 'var(--color-filetype-green-bg)',
     color: 'var(--color-semantic-green)',
   },
   word: {
     label: 'DOC',
-    bg: 'rgba(91,155,213,0.15)',
+    bg: 'var(--color-filetype-blue-bg)',
     color: 'var(--color-semantic-blue)',
   },
   pdf: {
     label: 'PDF',
-    bg: 'rgba(239,68,68,0.15)',
+    bg: 'var(--color-filetype-red-bg)',
     color: 'var(--color-semantic-red)',
   },
   json: {
     label: 'JSON',
-    bg: 'rgba(212,168,67,0.15)',
+    bg: 'var(--color-filetype-accent-bg)',
     color: 'var(--color-accent)',
   },
 }

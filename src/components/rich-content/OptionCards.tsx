@@ -24,10 +24,10 @@ export function OptionCards({ group, onSelect }: OptionCardsProps) {
             className="relative cursor-pointer rounded-lg border-[1.5px] p-3.5 text-left transition-all duration-200"
             style={{
               background: isSelected
-                ? 'var(--color-accent-bg-light)'
+                ? 'var(--color-primary-subtle)'
                 : 'var(--color-bg-card)',
               borderColor: isSelected
-                ? 'var(--color-accent)'
+                ? 'var(--color-primary)'
                 : 'var(--color-border)',
             }}
             onClick={() => onSelect?.(opt.id)}
@@ -36,7 +36,7 @@ export function OptionCards({ group, onSelect }: OptionCardsProps) {
             {opt.tag && (
               <div
                 className="mb-1.5 text-xs font-bold uppercase tracking-wide"
-                style={{ color: opt.tagColor ?? 'var(--color-accent)' }}
+                style={{ color: opt.tagColor ?? 'var(--color-primary)' }}
               >
                 {opt.tag}
               </div>
@@ -60,7 +60,7 @@ export function OptionCards({ group, onSelect }: OptionCardsProps) {
             {isSelected && (
               <div
                 className="absolute right-2.5 top-2.5 flex h-[18px] w-[18px] items-center justify-center rounded-full"
-                style={{ background: 'var(--color-accent)' }}
+                style={{ background: 'var(--color-primary)' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
                   <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />

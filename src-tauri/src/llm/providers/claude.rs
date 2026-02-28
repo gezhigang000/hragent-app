@@ -62,7 +62,7 @@ impl SseState {
 impl ClaudeProvider {
     pub fn new(api_key: String, model: Option<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: super::build_http_client(),
             api_key,
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
         }

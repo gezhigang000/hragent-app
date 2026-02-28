@@ -4,6 +4,7 @@
  */
 import { useMemo } from 'react'
 import { useChat } from '@/hooks/useChat'
+import { useChatStore } from '@/stores/chatStore'
 import type { Conversation } from '@/types/message'
 
 interface SidebarProps {
@@ -51,6 +52,9 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
     deleteConversation,
   } = useChat()
 
+  const busyConversations = useChatStore((s) => s.busyConversations)
+  const isNewDisabled = busyConversations.size >= 3
+
   const grouped = useMemo(() => groupConversations(conversations), [conversations])
 
   return (
@@ -83,25 +87,27 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
           className="mt-1 text-xs"
           style={{ color: 'var(--color-text-muted)' }}
         >
-          组织咨询专家 — 随叫随到的 HR 智能顾问
+          组织专家
         </p>
 
         <button
-          className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-sm border px-[18px] py-2 text-base font-medium transition-all duration-150"
+          className={`mt-3 flex w-full items-center justify-center gap-2 rounded-sm border px-[18px] py-2 text-base font-medium transition-all duration-150 ${isNewDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
           style={{
-            borderColor: 'var(--color-accent)',
-            color: 'var(--color-text-on-accent)',
-            background: 'var(--color-accent)',
+            borderColor: 'var(--color-primary)',
+            color: 'var(--color-primary)',
+            background: 'transparent',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--color-accent-hover)'
-            e.currentTarget.style.borderColor = 'var(--color-accent-hover)'
+            if (!isNewDisabled) {
+              e.currentTarget.style.background = 'var(--color-primary-subtle)'
+            }
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'var(--color-accent)'
-            e.currentTarget.style.borderColor = 'var(--color-accent)'
+            e.currentTarget.style.background = 'transparent'
           }}
-          onClick={() => createNewConversation()}
+          disabled={isNewDisabled}
+          title={isNewDisabled ? '已达最大并发数，请等待' : ''}
+          onClick={() => !isNewDisabled && createNewConversation()}
         >
           <svg
             className="h-4 w-4 shrink-0"
@@ -157,21 +163,28 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
                   {conv.id === activeConversationId && (
                     <span
                       className="absolute top-2 bottom-2 left-0 w-[3px] rounded"
-                      style={{ background: 'var(--color-accent)' }}
+                      style={{ background: 'var(--color-primary)' }}
                     />
                   )}
                   <button
                     className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-2 text-left"
                     onClick={() => switchConversation(conv.id)}
                   >
-                    <svg
-                      className="h-[18px] w-[18px] shrink-0 opacity-60"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    >
-                      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-                    </svg>
+                    {busyConversations.has(conv.id) ? (
+                      <span
+                        className="h-[18px] w-[18px] shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent opacity-60"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      />
+                    ) : (
+                      <svg
+                        className="h-[18px] w-[18px] shrink-0 opacity-60"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+                      </svg>
+                    )}
                     <span
                       className="flex-1 truncate text-sm"
                       style={{
@@ -197,7 +210,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
                       deleteConversation(conv.id)
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--color-danger, #EF4444)'
+                      e.currentTarget.style.color = 'var(--color-semantic-red)'
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.color = 'var(--color-text-muted)'

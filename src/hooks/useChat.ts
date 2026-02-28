@@ -19,8 +19,12 @@ import {
   createConversation,
   deleteConversation,
   getConversations,
+  isAgentBusy as isAgentBusyIpc,
 } from '@/lib/tauri'
 import type { Conversation, Message } from '@/types/message'
+
+/** Maximum concurrent conversations allowed (must match backend). */
+const MAX_CONCURRENT_AGENTS = 3
 
 /** Generate a unique ID without requiring the `uuid` package. */
 function generateId(): string {
@@ -42,12 +46,16 @@ export interface PendingFileInfo {
  * via `useChatStore.getState()` inside the callback body.
  */
 export function useChat() {
-  // Subscribe to state slices for re-rendering
+  // Subscribe to state slices for re-rendering.
+  // NOTE: streamingContent is intentionally NOT subscribed here.
+  // Only MessageList.tsx (which renders StreamingBubble) subscribes to it
+  // directly from the store. Subscribing here would force ALL useChat()
+  // consumers (Sidebar, InputBar, App) to re-render on every streaming
+  // delta token, saturating the JS main thread and freezing the UI.
   const conversations = useChatStore((s) => s.conversations)
   const activeConversationId = useChatStore((s) => s.activeConversationId)
   const messages = useChatStore((s) => s.messages)
   const isStreaming = useChatStore((s) => s.isStreaming)
-  const streamingContent = useChatStore((s) => s.streamingContent)
 
   /**
    * Create a brand-new conversation and make it active.
@@ -110,6 +118,10 @@ export function useChat() {
       store.setMessages([])
     }
 
+    // Clean up per-conversation streaming state and busy tracking to prevent memory leaks
+    store.deleteConversationStreamState(id)
+    store.removeBusyConversation(id)
+
     try {
       await deleteConversation(id)
       console.log('[useChat] deleteConversation IPC succeeded')
@@ -140,8 +152,6 @@ export function useChat() {
     const store = useChatStore.getState()
     store.setActiveConversation(id)
     store.setMessages([])
-    store.setStreamingContent('')
-    store.setStreaming(false)
 
     try {
       const msgs = await getMessages(id)
@@ -162,6 +172,34 @@ export function useChat() {
     let store = useChatStore.getState()
     let conversationId = store.activeConversationId
     console.log('[useChat] sendUserMessage, conversationId:', conversationId, 'text:', text.slice(0, 50))
+
+    // Block if THIS conversation is already busy
+    if (conversationId && store.busyConversations.has(conversationId)) {
+      useNotificationStore.getState().push({
+        level: 'warning',
+        title: '请稍候',
+        message: '当前对话正在处理中，请等待完成后再发送。',
+        actions: [],
+        dismissible: true,
+        autoHide: 5,
+        context: 'toast',
+      })
+      return
+    }
+
+    // Block if max concurrent conversations reached
+    if (store.busyConversations.size >= MAX_CONCURRENT_AGENTS) {
+      useNotificationStore.getState().push({
+        level: 'warning',
+        title: '请稍候',
+        message: `最多同时处理 ${MAX_CONCURRENT_AGENTS} 个对话，请等待其他对话完成。`,
+        actions: [],
+        dismissible: true,
+        autoHide: 5,
+        context: 'toast',
+      })
+      return
+    }
 
     // Auto-create a conversation if none is active
     if (!conversationId) {
@@ -206,8 +244,8 @@ export function useChat() {
 
     store = useChatStore.getState()
     store.addMessage(userMessage)
-    store.setStreaming(true)
-    store.setStreamingContent('')
+    store.setConversationStreaming(conversationId, true)
+    store.addBusyConversation(conversationId)
 
     try {
       const fileIds = files?.map((f) => f.id)
@@ -217,8 +255,8 @@ export function useChat() {
     } catch (err) {
       console.error('[useChat] sendMessage IPC failed:', err)
       const s = useChatStore.getState()
-      s.setStreaming(false)
-      s.setStreamingContent('')
+      s.clearConversationStreamState(conversationId)
+      s.removeBusyConversation(conversationId)
       // Show error toast so user knows the message failed
       useNotificationStore.getState().push({
         level: 'error',
@@ -233,21 +271,23 @@ export function useChat() {
   }, [])
 
   /**
-   * Stop the currently active streaming response.
+   * Stop the streaming response for the active conversation.
    */
   const stopCurrentStream = useCallback(() => {
     console.log('[useChat] stopCurrentStream')
     const store = useChatStore.getState()
-    store.setStreaming(false)
-    store.setStreamingContent('')
-
-    stopStreaming().catch((err) => {
-      console.error('[useChat] stopStreaming IPC failed:', err)
-    })
+    const convId = store.activeConversationId
+    if (convId) {
+      store.clearConversationStreamState(convId)
+      stopStreaming(convId).catch((err) => {
+        console.error('[useChat] stopStreaming IPC failed:', err)
+      })
+    }
   }, [])
 
   /**
    * Load the initial list of conversations from the backend.
+   * Also syncs the busy state for crash recovery.
    */
   const loadConversations = useCallback(async () => {
     console.log('[useChat] loadConversations')
@@ -265,6 +305,17 @@ export function useChat() {
     } catch (err) {
       console.error('[useChat] getConversations IPC failed:', err)
     }
+
+    // Sync agent busy state from backend (supports multiple concurrent)
+    try {
+      const busyIds = await isAgentBusyIpc()
+      useChatStore.getState().setBusyConversations(busyIds)
+      if (busyIds.length > 0) {
+        console.log('[useChat] Agent is busy with conversations:', busyIds)
+      }
+    } catch (err) {
+      console.error('[useChat] isAgentBusy IPC failed:', err)
+    }
   }, [])
 
   return {
@@ -273,7 +324,6 @@ export function useChat() {
     activeConversationId,
     messages,
     isStreaming,
-    streamingContent,
 
     // Actions (stable references)
     createNewConversation,

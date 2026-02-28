@@ -76,10 +76,14 @@ impl FileManager {
 
         let file_type = match ext.as_str() {
             "xlsx" | "xls" => "excel",
-            "csv" => "csv",
+            "csv" | "tsv" => "csv",
             "docx" | "doc" => "word",
             "pdf" => "pdf",
-            _ => "csv", // default
+            "pptx" | "ppt" => "ppt",
+            "json" | "jsonl" => "json",
+            "parquet" => "parquet",
+            "txt" | "log" => "text",
+            _ => "other",
         }
         .to_string();
 

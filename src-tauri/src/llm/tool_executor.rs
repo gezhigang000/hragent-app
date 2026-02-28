@@ -19,7 +19,7 @@ use crate::python::parser;
 use crate::python::runner::PythonRunner;
 use crate::search::tavily::TavilyClient;
 use crate::search::searxng::SearxngClient;
-use crate::storage::database::Database;
+use crate::storage::file_store::AppStorage;
 use crate::storage::file_manager::FileManager;
 use tauri::Emitter;
 
@@ -37,7 +37,7 @@ pub struct ToolResult {
 
 /// Context needed for tool execution.
 pub struct ToolContext {
-    pub db: Arc<Database>,
+    pub db: Arc<AppStorage>,
     pub file_manager: Arc<FileManager>,
     pub workspace_path: PathBuf,
     pub conversation_id: String,
@@ -150,21 +150,28 @@ async fn handle_web_search(ctx: &ToolContext, args: &Value) -> Result<String> {
 
     // Fallback: use free SearXNG (no API key needed)
     let client = SearxngClient::new();
-    let results = client.search(query, max_results).await?;
+    match client.search(query, max_results).await {
+        Ok(results) => {
+            let mut output = String::new();
+            for (i, result) in results.iter().enumerate() {
+                output.push_str(&format!(
+                    "{}. **{}**\n   URL: {}\n   {}\n\n",
+                    i + 1, result.title, result.url, result.content
+                ));
+            }
 
-    let mut output = String::new();
-    for (i, result) in results.iter().enumerate() {
-        output.push_str(&format!(
-            "{}. **{}**\n   URL: {}\n   {}\n\n",
-            i + 1, result.title, result.url, result.content
-        ));
+            if output.is_empty() {
+                output = "No search results found.".to_string();
+            }
+
+            Ok(output)
+        }
+        Err(e) => {
+            info!("SearXNG search also failed: {}", e);
+            // Return a non-error result so the LLM doesn't retry infinitely
+            Ok("[搜索不可用] Tavily 和 SearXNG 搜索均失败。请基于已有知识回答，不要编造搜索结果。".to_string())
+        }
     }
-
-    if output.is_empty() {
-        output = "No search results found.".to_string();
-    }
-
-    Ok(output)
 }
 
 /// 2. execute_python — run arbitrary Python code.
@@ -190,6 +197,51 @@ async fn handle_execute_python(ctx: &ToolContext, args: &Value) -> Result<String
         ));
     }
 
+    // Auto-register files created by _export_detail (detected via __GENERATED_FILE__ markers)
+    let mut generated_files_info = Vec::new();
+    let mut clean_stdout = String::new();
+    for line in result.stdout.lines() {
+        if let Some(json_str) = line.strip_prefix("__GENERATED_FILE__:") {
+            if let Ok(file_meta) = serde_json::from_str::<Value>(json_str) {
+                let rel_path = file_meta.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let filename = file_meta.get("filename").and_then(|v| v.as_str()).unwrap_or("");
+                let title = file_meta.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                let fmt = file_meta.get("format").and_then(|v| v.as_str()).unwrap_or("excel");
+
+                let full_path = ctx.workspace_path.join(rel_path);
+                let file_size = std::fs::metadata(&full_path).map(|m| m.len() as i64).unwrap_or(0);
+                let file_id = Uuid::new_v4().to_string();
+
+                if let Err(e) = ctx.db.insert_generated_file(
+                    &file_id,
+                    &ctx.conversation_id,
+                    None,
+                    filename,
+                    rel_path,
+                    fmt,
+                    file_size,
+                    "data",
+                    Some(title),
+                    1, true, None, None, None,
+                ) {
+                    error!("Failed to register generated file '{}': {}", filename, e);
+                } else {
+                    info!("[TOOL:execute_python] auto-registered file: {} ({})", filename, file_id);
+                    generated_files_info.push(json!({
+                        "fileId": file_id,
+                        "fileName": filename,
+                        "storedPath": rel_path,
+                        "fileSize": file_size,
+                    }));
+                }
+            }
+            // Don't include the marker line in output
+        } else {
+            clean_stdout.push_str(line);
+            clean_stdout.push('\n');
+        }
+    }
+
     let mut output = String::new();
     output.push_str(&format!("[Purpose: {}]\n", purpose));
     output.push_str(&format!("Exit code: {}\n", result.exit_code));
@@ -198,11 +250,24 @@ async fn handle_execute_python(ctx: &ToolContext, args: &Value) -> Result<String
         result.execution_time_ms
     ));
 
-    if !result.stdout.is_empty() {
-        output.push_str(&format!("\n--- stdout ---\n{}\n", result.stdout));
+    if !clean_stdout.is_empty() {
+        output.push_str(&format!("\n--- stdout ---\n{}\n", clean_stdout.trim_end()));
     }
     if !result.stderr.is_empty() {
         output.push_str(&format!("\n--- stderr ---\n{}\n", result.stderr));
+    }
+
+    // Append generated file info so the LLM knows about registered files
+    if !generated_files_info.is_empty() {
+        output.push_str("\n--- generated_files ---\n");
+        for fi in &generated_files_info {
+            output.push_str(&format!(
+                "File registered: {} (fileId: {}, size: {} bytes)\n",
+                fi["fileName"].as_str().unwrap_or(""),
+                fi["fileId"].as_str().unwrap_or(""),
+                fi["fileSize"].as_i64().unwrap_or(0),
+            ));
+        }
     }
 
     Ok(output)
@@ -227,6 +292,11 @@ async fn handle_analyze_file(ctx: &ToolContext, args: &Value) -> Result<String> 
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("File record missing storedPath"))?;
 
+    let original_name = file_record
+        .get("originalName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
     let full_path = ctx.file_manager.full_path(stored_path);
 
     let runner = PythonRunner::new(ctx.workspace_path.clone());
@@ -234,7 +304,10 @@ async fn handle_analyze_file(ctx: &ToolContext, args: &Value) -> Result<String> 
 
     // Return both the relative stored_path (for DB references) and the
     // absolute path (for direct use in execute_python code).
+    // originalName is included so the LLM can refer to files by their
+    // user-facing name instead of the randomized stored filename.
     let output = serde_json::to_string_pretty(&json!({
+        "originalName": original_name,
         "format": parse_result.format,
         "columns": parse_result.column_names,
         "rowCount": parse_result.row_count,
@@ -557,50 +630,401 @@ async fn handle_update_progress(ctx: &ToolContext, args: &Value) -> Result<Strin
 // Code generation helpers
 // ─────────────────────────────────────────────────
 
-/// Build an HTML report from a title and sections array.
+/// Build a professional HTML report from a title and sections array.
+///
+/// Each section supports multiple content types:
+/// - `content` (string) — text/markdown content, converted to HTML
+/// - `table` (object) — structured table { columns: [...], rows: [[...], ...] }
+/// - `metrics` (array) — metric cards [{ label, value, subtitle?, state? }]
+/// - `items` (array) — bullet list of strings
+/// - `highlight` (string) — highlighted callout box
+/// - `chartPath` (string) — relative path to a chart image to embed
 fn build_html_report(title: &str, sections: &[Value]) -> String {
     let mut body = String::new();
+
     for section in sections {
         let heading = section
             .get("heading")
             .and_then(|v| v.as_str())
             .unwrap_or("Untitled Section");
-        let content = section
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+
         body.push_str(&format!(
-            "        <section>\n            <h2>{}</h2>\n            <div class=\"content\">{}</div>\n        </section>\n",
+            "    <section>\n      <h2>{}</h2>\n",
             html_escape(heading),
-            html_escape(content).replace('\n', "<br>\n"),
         ));
+
+        // Text content (with markdown → HTML conversion)
+        if let Some(content) = section.get("content").and_then(|v| v.as_str()) {
+            if !content.trim().is_empty() {
+                body.push_str("      <div class=\"content\">");
+                body.push_str(&report_markdown_to_html(content));
+                body.push_str("</div>\n");
+            }
+        }
+
+        // Metric cards
+        if let Some(metrics) = section.get("metrics").and_then(|v| v.as_array()) {
+            body.push_str("      <div class=\"metric-grid\">\n");
+            for m in metrics {
+                let label = m.get("label").and_then(|v| v.as_str()).unwrap_or("");
+                let value = m.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                let subtitle = m.get("subtitle").and_then(|v| v.as_str()).unwrap_or("");
+                let state = m.get("state").and_then(|v| v.as_str()).unwrap_or("neutral");
+                let state_class = match state {
+                    "good" => "metric-good",
+                    "warn" => "metric-warn",
+                    "bad" => "metric-bad",
+                    _ => "",
+                };
+                body.push_str(&format!(
+                    "        <div class=\"metric-card {}\"><div class=\"metric-label\">{}</div><div class=\"metric-value\">{}</div><div class=\"metric-sub\">{}</div></div>\n",
+                    state_class, html_escape(label), html_escape(value), html_escape(subtitle),
+                ));
+            }
+            body.push_str("      </div>\n");
+        }
+
+        // Structured table
+        if let Some(table) = section.get("table") {
+            render_report_table(&mut body, table);
+        }
+
+        // Bullet list
+        if let Some(items) = section.get("items").and_then(|v| v.as_array()) {
+            body.push_str("      <ul class=\"item-list\">\n");
+            for item in items {
+                if let Some(text) = item.as_str() {
+                    body.push_str(&format!("        <li>{}</li>\n", report_inline_md(&html_escape(text))));
+                }
+            }
+            body.push_str("      </ul>\n");
+        }
+
+        // Highlight callout
+        if let Some(highlight) = section.get("highlight").and_then(|v| v.as_str()) {
+            body.push_str(&format!(
+                "      <div class=\"callout\">{}</div>\n",
+                report_inline_md(&html_escape(highlight)),
+            ));
+        }
+
+        body.push_str("    </section>\n");
     }
 
+    let now = chrono::Local::now();
+
     format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
+        r##"<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px auto; max-width: 900px; padding: 0 20px; color: #333; }}
-        h1 {{ color: #1a1a2e; border-bottom: 2px solid #16213e; padding-bottom: 10px; }}
-        h2 {{ color: #16213e; margin-top: 30px; }}
-        section {{ margin-bottom: 24px; }}
-        .content {{ line-height: 1.6; }}
-        .generated {{ font-size: 0.85em; color: #888; margin-top: 40px; border-top: 1px solid #eee; padding-top: 10px; }}
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<style>
+  @page {{ margin: 2cm; }}
+  @media print {{
+    body {{ padding: 0; }}
+    .no-print {{ display: none; }}
+    section {{ break-inside: avoid; }}
+  }}
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #1a1a2e;
+    background: #fff;
+    padding: 48px 40px;
+    max-width: 960px;
+    margin: 0 auto;
+  }}
+  /* ── Header ── */
+  .report-header {{
+    border-bottom: 3px solid #6c5ce7;
+    padding-bottom: 24px;
+    margin-bottom: 36px;
+  }}
+  .report-header h1 {{
+    font-size: 26px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 8px;
+  }}
+  .report-header .meta {{
+    font-size: 12px;
+    color: #8e8ea0;
+  }}
+  /* ── Sections ── */
+  section {{
+    margin-bottom: 32px;
+    page-break-inside: avoid;
+  }}
+  h2 {{
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e8e8f0;
+    margin-bottom: 16px;
+  }}
+  .content {{
+    line-height: 1.7;
+  }}
+  .content p {{ margin-bottom: 10px; }}
+  .content h3 {{ font-size: 15px; font-weight: 600; margin: 16px 0 8px; color: #2d3436; }}
+  .content h4 {{ font-size: 14px; font-weight: 600; margin: 12px 0 6px; color: #2d3436; }}
+  .content ul, .content ol {{ margin: 8px 0 12px 20px; }}
+  .content li {{ margin-bottom: 4px; }}
+  .content strong {{ color: #1a1a2e; }}
+  .content code {{ background: #f0f0f5; padding: 2px 6px; border-radius: 3px; font-size: 13px; }}
+  /* ── Metric Cards ── */
+  .metric-grid {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin: 16px 0;
+  }}
+  .metric-card {{
+    flex: 1;
+    min-width: 160px;
+    padding: 16px 20px;
+    border-radius: 10px;
+    border: 1px solid #e0e0e8;
+    background: #fafafa;
+  }}
+  .metric-label {{ font-size: 12px; color: #8e8ea0; font-weight: 500; }}
+  .metric-value {{ font-size: 24px; font-weight: 700; margin: 6px 0 4px; color: #1a1a2e; }}
+  .metric-sub {{ font-size: 11px; color: #8e8ea0; }}
+  .metric-good {{ border-color: #00b894; background: #f0faf7; }}
+  .metric-good .metric-value {{ color: #00b894; }}
+  .metric-warn {{ border-color: #fdcb6e; background: #fffef5; }}
+  .metric-warn .metric-value {{ color: #e17055; }}
+  .metric-bad {{ border-color: #ff7675; background: #fff5f5; }}
+  .metric-bad .metric-value {{ color: #d63031; }}
+  /* ── Tables ── */
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13px;
+  }}
+  table th, table td {{
+    border: 1px solid #e0e0e8;
+    padding: 8px 12px;
+    text-align: left;
+  }}
+  table th {{
+    background: #f5f5fa;
+    font-weight: 600;
+    color: #444;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }}
+  table tr:nth-child(even) {{ background: #fafafa; }}
+  /* ── Callout ── */
+  .callout {{
+    border-left: 4px solid #6c5ce7;
+    padding: 14px 18px;
+    margin: 16px 0;
+    background: #f8f7ff;
+    border-radius: 0 8px 8px 0;
+    font-size: 14px;
+    line-height: 1.6;
+  }}
+  /* ── Item List ── */
+  .item-list {{
+    margin: 12px 0 16px 20px;
+    line-height: 1.7;
+  }}
+  .item-list li {{ margin-bottom: 6px; }}
+  /* ── Footer ── */
+  .report-footer {{
+    border-top: 1px solid #e8e8f0;
+    padding-top: 16px;
+    margin-top: 48px;
+    font-size: 11px;
+    color: #8e8ea0;
+    text-align: center;
+  }}
+</style>
 </head>
 <body>
-    <h1>{title}</h1>
+<div class="report-header">
+  <h1>{title}</h1>
+  <div class="meta">Generated: {timestamp} &nbsp;|&nbsp; AI小家 — 组织咨询专家</div>
+</div>
 {body}
-    <p class="generated">Generated by Analysis Agent</p>
+<div class="report-footer">
+  本报告由 AI小家（组织咨询专家）自动生成 — {timestamp}
+</div>
 </body>
-</html>"#,
+</html>"##,
         title = html_escape(title),
         body = body,
+        timestamp = now.format("%Y-%m-%d %H:%M"),
     )
+}
+
+/// Render a structured table for report HTML.
+fn render_report_table(html: &mut String, table: &Value) {
+    let title = table.get("title").and_then(|v| v.as_str());
+    if let Some(t) = title {
+        html.push_str(&format!("      <div style=\"font-weight:600;font-size:13px;margin:12px 0 6px\">{}</div>\n", html_escape(t)));
+    }
+
+    // Support both { columns: [str], rows: [[str]] } and { columns: [{label, key}], rows: [{key: val}] }
+    let columns = match table.get("columns").and_then(|v| v.as_array()) {
+        Some(cols) => cols,
+        None => return,
+    };
+    let rows = match table.get("rows").and_then(|v| v.as_array()) {
+        Some(rows) => rows,
+        None => return,
+    };
+
+    html.push_str("      <table><thead><tr>\n");
+
+    // Determine column labels and keys
+    let col_info: Vec<(String, String)> = columns.iter().map(|col| {
+        if let Some(label) = col.as_str() {
+            (label.to_string(), label.to_string())
+        } else {
+            let label = col.get("label").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let key = col.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            (label, key)
+        }
+    }).collect();
+
+    for (label, _) in &col_info {
+        html.push_str(&format!("        <th>{}</th>\n", html_escape(label)));
+    }
+    html.push_str("      </tr></thead><tbody>\n");
+
+    for row in rows {
+        html.push_str("      <tr>");
+        if let Some(row_arr) = row.as_array() {
+            // Row is an array of values
+            for (i, _) in col_info.iter().enumerate() {
+                let cell = row_arr.get(i).map(|v| {
+                    v.as_str().map(|s| s.to_string()).unwrap_or_else(|| v.to_string())
+                }).unwrap_or_default();
+                html.push_str(&format!("<td>{}</td>", html_escape(&cell)));
+            }
+        } else {
+            // Row is an object with keys
+            for (_, key) in &col_info {
+                let cell = row.get(key.as_str())
+                    .map(|v| v.as_str().map(|s| s.to_string()).unwrap_or_else(|| v.to_string()))
+                    .unwrap_or_default();
+                html.push_str(&format!("<td>{}</td>", html_escape(&cell)));
+            }
+        }
+        html.push_str("</tr>\n");
+    }
+    html.push_str("      </tbody></table>\n");
+}
+
+/// Simple markdown → HTML for report content blocks.
+fn report_markdown_to_html(text: &str) -> String {
+    let mut result = String::with_capacity(text.len() * 2);
+    let mut in_list = false;
+    let mut in_table = false;
+    let mut table_header_done = false;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+
+        // Table rows (| col | col |)
+        if trimmed.starts_with('|') && trimmed.ends_with('|') {
+            if trimmed.chars().all(|c| c == '|' || c == '-' || c == ' ' || c == ':') {
+                // Separator line — skip but mark header done
+                table_header_done = true;
+                continue;
+            }
+            if !in_table {
+                if in_list { result.push_str("</ul>"); in_list = false; }
+                result.push_str("<table>");
+                in_table = true;
+                table_header_done = false;
+            }
+            let cells: Vec<&str> = trimmed.split('|')
+                .filter(|s| !s.trim().is_empty())
+                .collect();
+            let tag = if !table_header_done { "th" } else { "td" };
+            result.push_str("<tr>");
+            for cell in &cells {
+                result.push_str(&format!("<{}>{}</{}>", tag, report_inline_md(&html_escape(cell.trim())), tag));
+            }
+            result.push_str("</tr>");
+            continue;
+        }
+
+        // Close table if we were in one
+        if in_table {
+            result.push_str("</table>");
+            in_table = false;
+            table_header_done = false;
+        }
+
+        // Unordered list items
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+            if !in_list { result.push_str("<ul>"); in_list = true; }
+            result.push_str(&format!("<li>{}</li>", report_inline_md(&html_escape(&trimmed[2..]))));
+            continue;
+        }
+
+        // Ordered list items
+        if let Some(rest) = trimmed.strip_prefix(|c: char| c.is_ascii_digit()).and_then(|s| s.strip_prefix(". ")) {
+            if !in_list { result.push_str("<ol>"); in_list = true; }
+            result.push_str(&format!("<li>{}</li>", report_inline_md(&html_escape(rest))));
+            continue;
+        }
+
+        if in_list {
+            if trimmed.is_empty() {
+                result.push_str("</ul>");
+                in_list = false;
+            }
+        }
+
+        // Headers
+        if trimmed.starts_with("### ") {
+            result.push_str(&format!("<h4>{}</h4>", report_inline_md(&html_escape(&trimmed[4..]))));
+        } else if trimmed.starts_with("## ") {
+            result.push_str(&format!("<h3>{}</h3>", report_inline_md(&html_escape(&trimmed[3..]))));
+        } else if trimmed.starts_with("# ") {
+            result.push_str(&format!("<h3>{}</h3>", report_inline_md(&html_escape(&trimmed[2..]))));
+        } else if trimmed.is_empty() {
+            // Skip excessive blank lines
+        } else {
+            result.push_str(&format!("<p>{}</p>", report_inline_md(&html_escape(trimmed))));
+        }
+    }
+
+    if in_list { result.push_str("</ul>"); }
+    if in_table { result.push_str("</table>"); }
+    result
+}
+
+/// Convert inline markdown (bold, code) to HTML for reports.
+fn report_inline_md(text: &str) -> String {
+    let mut result = text.to_string();
+    // Bold: **text**
+    while let Some(start) = result.find("**") {
+        if let Some(end) = result[start + 2..].find("**") {
+            let inner = result[start + 2..start + 2 + end].to_string();
+            result = format!("{}<strong>{}</strong>{}", &result[..start], inner, &result[start + 2 + end + 2..]);
+        } else { break; }
+    }
+    // Inline code: `text`
+    while let Some(start) = result.find('`') {
+        if let Some(end) = result[start + 1..].find('`') {
+            let inner = result[start + 1..start + 1 + end].to_string();
+            result = format!("{}<code>{}</code>{}", &result[..start], inner, &result[start + 1 + end + 1..]);
+        } else { break; }
+    }
+    result
 }
 
 /// Build a Markdown report from a title and sections array.
@@ -1365,7 +1789,9 @@ mod tests {
         assert!(html.contains("<title>Test Report</title>"));
         assert!(html.contains("<h2>Summary</h2>"));
         assert!(html.contains("Good results."));
-        assert!(html.contains("<br>"));
+        // Multi-line content is split into separate <p> tags
+        assert!(html.contains("<p>Line1</p>"));
+        assert!(html.contains("<p>Line2</p>"));
     }
 
     #[test]
@@ -1463,17 +1889,16 @@ mod tests {
 
     // ── Test helpers ─────────────────────────────
 
-    fn create_test_db() -> (Arc<Database>, tempfile::TempDir) {
+    fn create_test_db() -> (Arc<AppStorage>, tempfile::TempDir) {
         let dir = tempfile::TempDir::new().unwrap();
-        let db_path = dir.path().join("test.db");
-        let db = Arc::new(Database::new(&db_path).unwrap());
+        let db = Arc::new(AppStorage::new(dir.path()).unwrap());
         // Create a conversation for testing.
         db.create_conversation("test_conv_1", "Test Conversation")
             .unwrap();
         (db, dir)
     }
 
-    fn create_test_context(db: Arc<Database>) -> ToolContext {
+    fn create_test_context(db: Arc<AppStorage>) -> ToolContext {
         let workspace = std::env::temp_dir().join("tool_executor_test");
         std::fs::create_dir_all(&workspace).ok();
         ToolContext {

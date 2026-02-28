@@ -7,7 +7,15 @@
 
 /* ===== TailwindCSS 4 Theme Configuration ===== */
 @theme {
-  /* === Accent / Brand Colors === */
+  /* === Primary / Carbon Black (interactive elements) === */
+  --color-primary: #1D1D1F;
+  --color-primary-hover: #2C2C2E;
+  --color-primary-active: #000000;
+  --color-text-on-primary: #FFFFFF;
+  --color-primary-subtle: rgba(29, 29, 31, 0.08);
+  --color-primary-muted: rgba(29, 29, 31, 0.15);
+
+  /* === Accent / Brand Colors (brand-only: AI avatar, Logo) === */
   --color-accent-50: #FEF9EC;
   --color-accent-100: #FBF0D1;
   --color-accent-200: #F5DDA3;
@@ -101,6 +109,7 @@
 
   /* === Code Block Colors === */
   --color-bg-code: #F5F4F0;
+  --color-bg-code-header: rgba(0, 0, 0, 0.02);
   --color-text-code: #383838;
 
   /* === Semantic Color Variants (light bg + border) === */
@@ -113,6 +122,19 @@
   --color-semantic-green-bg-light: rgba(52, 199, 89, 0.04);
   --color-accent-bg-light: rgba(212, 168, 67, 0.04);
   --color-accent-border: rgba(212, 168, 67, 0.25);
+
+  /* === File Type Badge Backgrounds (0.15 opacity) === */
+  --color-filetype-green-bg: rgba(52, 199, 89, 0.15);
+  --color-filetype-blue-bg: rgba(91, 155, 213, 0.15);
+  --color-filetype-red-bg: rgba(239, 68, 68, 0.15);
+  --color-filetype-accent-bg: rgba(212, 168, 67, 0.15);
+  --color-filetype-purple-bg: rgba(155, 126, 216, 0.15);
+  --color-filetype-orange-bg: rgba(245, 166, 35, 0.15);
+  --color-filetype-gray-bg: rgba(168, 168, 168, 0.15);
+
+  /* === Neutral Muted (gray bg for badges, pills, inactive states) === */
+  --color-bg-neutral: rgba(168, 168, 168, 0.12);
+  --color-bg-neutral-subtle: rgba(168, 168, 168, 0.1);
 
   /* === Overlay & Avatar === */
   --color-overlay: rgba(0, 0, 0, 0.5);
@@ -196,6 +218,11 @@ body {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to   { opacity: 1; transform: none; }
 }
 
 /* ===== Focus Styles ===== */

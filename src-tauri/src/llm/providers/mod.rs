@@ -11,6 +11,17 @@ use anyhow::Result;
 
 use crate::llm::streaming::{LlmRequest, LlmResponse, StreamBox};
 
+/// Build a shared HTTP client with a 30-second TCP connect timeout.
+///
+/// Only `connect_timeout` is set — no global `timeout` — because
+/// streaming responses can legitimately run for several minutes.
+pub fn build_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 /// Trait that all LLM providers must implement.
 ///
 /// Each provider handles its own API format, authentication,

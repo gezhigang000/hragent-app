@@ -26,7 +26,7 @@ impl VolcanoProvider {
         Self {
             api_key,
             model,
-            client: Client::new(),
+            client: super::build_http_client(),
         }
     }
 }

@@ -8,6 +8,7 @@ mod python;
 use std::sync::Arc;
 use tauri::Manager;
 use commands::chat;
+use commands::export;
 use commands::file;
 use commands::settings;
 use commands::workspace;
@@ -31,10 +32,10 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
 
-            // Initialize database
+            // Initialize file-based storage
             let db = Arc::new(
-                storage::database::Database::new(&app_data_dir.join("aijia.db"))
-                    .expect("Failed to initialize database")
+                storage::file_store::AppStorage::new(&app_data_dir)
+                    .expect("Failed to initialize file storage")
             );
 
             // Initialize file manager
@@ -72,6 +73,22 @@ pub fn run() {
             // Initialize LLM gateway
             let gateway = Arc::new(llm::gateway::LlmGateway::new(db.clone()));
 
+            // Crash recovery: clean up any tasks that were running when app crashed
+            match db.cleanup_orphaned_tasks() {
+                Ok(orphaned) => {
+                    for conv_id in &orphaned {
+                        log::warn!("Cleaning up orphaned agent task for conversation: {}", conv_id);
+                        db.reset_stuck_analysis_state(conv_id).ok();
+                    }
+                    if !orphaned.is_empty() {
+                        log::info!("Cleaned up {} orphaned agent tasks from previous crash", orphaned.len());
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to cleanup orphaned tasks: {}", e);
+                }
+            }
+
             // Register managed state
             app.manage(db);
             app.manage(file_mgr);
@@ -88,9 +105,11 @@ pub fn run() {
             chat::create_conversation,
             chat::delete_conversation,
             chat::get_conversations,
+            chat::is_agent_busy,
             // File commands
             file::upload_file,
             file::open_generated_file,
+            file::reveal_file_in_folder,
             file::preview_file,
             file::delete_file,
             // Settings commands
@@ -104,6 +123,8 @@ pub fn run() {
             // Workspace commands
             workspace::select_workspace,
             workspace::get_workspace_info,
+            // Export commands
+            export::export_conversation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

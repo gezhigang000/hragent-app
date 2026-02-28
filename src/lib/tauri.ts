@@ -31,7 +31,52 @@ export const TAURI_EVENTS = {
   TOOL_EXECUTING: 'tool:executing',
   TOOL_COMPLETED: 'tool:completed',
   CONVERSATION_TITLE_UPDATED: 'conversation:title-updated',
+  AGENT_IDLE: 'agent:idle',
+  STREAMING_STEP_RESET: 'streaming:step-reset',
 } as const
+
+// ---------------------------------------------------------------------------
+// Event Payload Types
+// ---------------------------------------------------------------------------
+
+export interface StreamingDeltaPayload {
+  conversationId: string
+  delta: string
+}
+
+export interface StreamingDonePayload {
+  conversationId: string
+  messageId: string
+}
+
+export interface StreamingErrorPayload {
+  conversationId: string
+  error: string
+}
+
+export interface AgentIdlePayload {
+  conversationId: string
+}
+
+export interface StreamingStepResetPayload {
+  conversationId: string
+  step: number
+}
+
+export interface ToolExecutingPayload {
+  conversationId: string
+  toolName: string
+  toolId: string
+  purpose?: string
+}
+
+export interface ToolCompletedPayload {
+  conversationId: string
+  toolName: string
+  toolId: string
+  success: boolean
+  summary?: string
+}
 
 // ---------------------------------------------------------------------------
 // Chat Commands
@@ -53,10 +98,12 @@ export function sendMessage(conversationId: string, content: string, fileIds?: s
 }
 
 /**
- * Abort the current streaming response from the AI model.
+ * Abort the streaming response for a specific conversation.
+ *
+ * @param conversationId - The conversation whose streaming should be stopped
  */
-export function stopStreaming(): Promise<void> {
-  return invoke<void>('stop_streaming')
+export function stopStreaming(conversationId: string): Promise<void> {
+  return invoke<void>('stop_streaming', { conversationId })
 }
 
 /**
@@ -100,6 +147,32 @@ export function deleteConversation(conversationId: string): Promise<void> {
   })
 }
 
+/**
+ * Check which conversations currently have active agent tasks.
+ *
+ * @returns Array of conversation IDs that are being processed
+ */
+export function isAgentBusy(): Promise<string[]> {
+  return invoke<string[]>('is_agent_busy')
+}
+
+/**
+ * Export a conversation to PDF or HTML format.
+ *
+ * @param conversationId - The conversation to export
+ * @param format - Export format: 'pdf' or 'html'
+ * @returns File info for the generated export
+ */
+export function exportConversation(
+  conversationId: string,
+  format: 'pdf' | 'html',
+): Promise<{ fileId: string; fileName: string; storedPath: string; fileSize: number }> {
+  return invoke<{ fileId: string; fileName: string; storedPath: string; fileSize: number }>('export_conversation', {
+    conversationId,
+    format,
+  })
+}
+
 // ---------------------------------------------------------------------------
 // File Commands
 // ---------------------------------------------------------------------------
@@ -126,6 +199,19 @@ export function uploadFile(filePath: string, conversationId: string): Promise<{ 
  */
 export function openGeneratedFile(fileId: string, conversationId: string): Promise<void> {
   return invoke<void>('open_generated_file', {
+    fileId,
+    conversationId,
+  })
+}
+
+/**
+ * Reveal a file in the OS file manager (Finder / Explorer).
+ *
+ * @param fileId - ID of the file to reveal
+ * @param conversationId - Conversation that owns the file
+ */
+export function revealFileInFolder(fileId: string, conversationId: string): Promise<void> {
+  return invoke<void>('reveal_file_in_folder', {
     fileId,
     conversationId,
   })
@@ -262,13 +348,13 @@ export function getWorkspaceInfo(): Promise<string> {
 /**
  * Listen for streaming text deltas as the AI model generates a response.
  *
- * @param handler - Callback receiving each text delta chunk
+ * @param handler - Callback receiving each text delta chunk with conversationId
  * @returns A function to unlisten (unsubscribe) from the event
  */
 export function onStreamingDelta(
-  handler: (payload: { delta: string }) => void,
+  handler: (payload: StreamingDeltaPayload) => void,
 ): Promise<() => void> {
-  return listen<{ delta: string }>(TAURI_EVENTS.STREAMING_DELTA, (event) => {
+  return listen<StreamingDeltaPayload>(TAURI_EVENTS.STREAMING_DELTA, (event) => {
     handler(event.payload)
   })
 }
@@ -276,13 +362,13 @@ export function onStreamingDelta(
 /**
  * Listen for the streaming completion event.
  *
- * @param handler - Callback receiving the final message ID
+ * @param handler - Callback receiving the conversationId and final message ID
  * @returns A function to unlisten (unsubscribe) from the event
  */
 export function onStreamingDone(
-  handler: (payload: { messageId: string }) => void,
+  handler: (payload: StreamingDonePayload) => void,
 ): Promise<() => void> {
-  return listen<{ messageId: string }>(TAURI_EVENTS.STREAMING_DONE, (event) => {
+  return listen<StreamingDonePayload>(TAURI_EVENTS.STREAMING_DONE, (event) => {
     handler(event.payload)
   })
 }
@@ -290,13 +376,13 @@ export function onStreamingDone(
 /**
  * Listen for streaming error events (e.g. network failure, rate limit).
  *
- * @param handler - Callback receiving the error description
+ * @param handler - Callback receiving the conversationId and error description
  * @returns A function to unlisten (unsubscribe) from the event
  */
 export function onStreamingError(
-  handler: (payload: { error: string }) => void,
+  handler: (payload: StreamingErrorPayload) => void,
 ): Promise<() => void> {
-  return listen<{ error: string }>(TAURI_EVENTS.STREAMING_ERROR, (event) => {
+  return listen<StreamingErrorPayload>(TAURI_EVENTS.STREAMING_ERROR, (event) => {
     handler(event.payload)
   })
 }
@@ -347,13 +433,13 @@ export function onNotification(
 /**
  * Listen for tool execution start events.
  *
- * @param handler - Callback receiving the tool name, unique tool ID, and optional purpose description
+ * @param handler - Callback receiving the conversationId, tool name, unique tool ID, and optional purpose description
  * @returns A function to unlisten (unsubscribe) from the event
  */
 export function onToolExecuting(
-  handler: (payload: { toolName: string; toolId: string; purpose?: string }) => void,
+  handler: (payload: ToolExecutingPayload) => void,
 ): Promise<() => void> {
-  return listen<{ toolName: string; toolId: string; purpose?: string }>(TAURI_EVENTS.TOOL_EXECUTING, (event) => {
+  return listen<ToolExecutingPayload>(TAURI_EVENTS.TOOL_EXECUTING, (event) => {
     handler(event.payload)
   })
 }
@@ -361,13 +447,13 @@ export function onToolExecuting(
 /**
  * Listen for tool execution completion events.
  *
- * @param handler - Callback receiving the tool name, unique tool ID, success flag, and optional summary
+ * @param handler - Callback receiving the conversationId, tool name, unique tool ID, success flag, and optional summary
  * @returns A function to unlisten (unsubscribe) from the event
  */
 export function onToolCompleted(
-  handler: (payload: { toolName: string; toolId: string; success: boolean; summary?: string }) => void,
+  handler: (payload: ToolCompletedPayload) => void,
 ): Promise<() => void> {
-  return listen<{ toolName: string; toolId: string; success: boolean; summary?: string }>(TAURI_EVENTS.TOOL_COMPLETED, (event) => {
+  return listen<ToolCompletedPayload>(TAURI_EVENTS.TOOL_COMPLETED, (event) => {
     handler(event.payload)
   })
 }
@@ -382,6 +468,35 @@ export function onConversationTitleUpdated(
   handler: (payload: { conversationId: string; title: string }) => void,
 ): Promise<() => void> {
   return listen<{ conversationId: string; title: string }>(TAURI_EVENTS.CONVERSATION_TITLE_UPDATED, (event) => {
+    handler(event.payload)
+  })
+}
+
+/**
+ * Listen for agent idle events (emitted when the agent loop finishes).
+ *
+ * @param handler - Callback receiving the conversationId of the finished agent
+ * @returns A function to unlisten (unsubscribe) from the event
+ */
+export function onAgentIdle(
+  handler: (payload: AgentIdlePayload) => void,
+): Promise<() => void> {
+  return listen<AgentIdlePayload>(TAURI_EVENTS.AGENT_IDLE, (event) => {
+    handler(event.payload)
+  })
+}
+
+/**
+ * Listen for streaming step-reset events during auto-advance between analysis steps.
+ *
+ * When the backend auto-advances from step N to step N+1, it emits this event
+ * so the frontend clears the previous step's streaming content and tool executions
+ * while keeping isStreaming=true (the next step's deltas are about to start).
+ */
+export function onStreamingStepReset(
+  handler: (payload: StreamingStepResetPayload) => void,
+): Promise<() => void> {
+  return listen<StreamingStepResetPayload>(TAURI_EVENTS.STREAMING_STEP_RESET, (event) => {
     handler(event.payload)
   })
 }

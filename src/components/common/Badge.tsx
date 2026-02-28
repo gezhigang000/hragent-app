@@ -16,7 +16,7 @@ const variantStyles: Record<BadgeVariant, { bg: string; color: string }> = {
   red: { bg: 'var(--color-semantic-red-bg)', color: 'var(--color-semantic-red)' },
   blue: { bg: 'var(--color-semantic-blue-bg)', color: 'var(--color-semantic-blue)' },
   purple: { bg: 'var(--color-semantic-purple-bg)', color: 'var(--color-semantic-purple)' },
-  gray: { bg: 'rgba(168,168,168,0.12)', color: 'var(--color-text-muted)' },
+  gray: { bg: 'var(--color-bg-neutral)', color: 'var(--color-text-muted)' },
   accent: { bg: 'var(--color-accent-subtle)', color: 'var(--color-accent)' },
 }
 

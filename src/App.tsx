@@ -40,7 +40,7 @@ function App() {
     <>
       <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
       <main className="flex flex-1 flex-col overflow-hidden">
-        <TopBar onOpenSettings={() => setSettingsOpen(true)} />
+        <TopBar />
         <div className="relative flex flex-1 flex-col overflow-hidden">
           <ChatArea />
           <InputBar />

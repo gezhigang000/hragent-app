@@ -4,7 +4,7 @@
  */
 import { create } from 'zustand'
 
-export type NotificationLevel = 'info' | 'warning' | 'error'
+export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
 export type NotificationContext = 'toast' | 'inline' | 'banner' | 'modal'
 
 export interface NotificationAction {

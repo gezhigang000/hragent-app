@@ -24,7 +24,7 @@ export function InsightBlock({ insight }: InsightBlockProps) {
         {insight.title}
       </div>
       <p
-        className="m-0 text-sm leading-[1.65]"
+        className="m-0 text-sm leading-relaxed"
         style={{ color: 'var(--color-text-secondary)' }}
       >
         {insight.content}

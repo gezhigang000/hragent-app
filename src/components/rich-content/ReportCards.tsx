@@ -9,10 +9,10 @@ interface ReportCardsProps {
   onOpen?: (reportId: string) => void
 }
 
-const FILE_TYPE_ICON: Record<ReportCard['fileType'], { emoji: string; bg: string; color: string }> = {
-  html: { emoji: '📊', bg: 'rgba(91,155,213,0.15)', color: 'var(--color-semantic-blue)' },
-  excel: { emoji: '📗', bg: 'rgba(52,199,89,0.15)', color: 'var(--color-semantic-green)' },
-  pdf: { emoji: '📕', bg: 'rgba(239,68,68,0.15)', color: 'var(--color-semantic-red)' },
+const FILE_TYPE_ICON: Record<ReportCard['fileType'], { label: string; bg: string; color: string }> = {
+  html: { label: 'HTML', bg: 'var(--color-filetype-blue-bg)', color: 'var(--color-semantic-blue)' },
+  excel: { label: 'XLS', bg: 'var(--color-filetype-green-bg)', color: 'var(--color-semantic-green)' },
+  pdf: { label: 'PDF', bg: 'var(--color-filetype-red-bg)', color: 'var(--color-semantic-red)' },
 }
 
 export function ReportCards({ reports, onOpen }: ReportCardsProps) {
@@ -31,7 +31,7 @@ export function ReportCards({ reports, onOpen }: ReportCardsProps) {
               borderColor: 'var(--color-border)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--color-accent)'
+              e.currentTarget.style.borderColor = 'var(--color-primary)'
               e.currentTarget.style.background = 'var(--color-bg-card-hover)'
             }}
             onMouseLeave={(e) => {
@@ -41,10 +41,10 @@ export function ReportCards({ reports, onOpen }: ReportCardsProps) {
             onClick={() => onOpen?.(r.id)}
           >
             <div
-              className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg text-xl"
-              style={{ background: icon.bg }}
+              className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+              style={{ background: icon.bg, color: icon.color }}
             >
-              {icon.emoji}
+              {icon.label}
             </div>
             <div className="min-w-0 flex-1">
               <h4

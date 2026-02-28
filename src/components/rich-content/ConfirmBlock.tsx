@@ -1,5 +1,5 @@
 /**
- * ConfirmBlock — human-in-the-loop confirmation card with accent left border.
+ * ConfirmBlock — human-in-the-loop confirmation card with primary left border.
  * Based on visual-prototype-zh.html .confirm styles.
  */
 import type { ConfirmBlock as ConfirmBlockType } from '@/types/message'
@@ -19,13 +19,13 @@ export function ConfirmBlock({ confirm, onConfirm, onReject }: ConfirmBlockProps
       className="my-3 rounded-lg border border-l-[3px] p-4"
       style={{
         background: isPending
-          ? 'var(--color-accent-bg-light)'
+          ? 'var(--color-primary-subtle)'
           : 'var(--color-bg-card)',
         borderColor: isPending
-          ? 'var(--color-accent-border)'
+          ? 'var(--color-primary-muted)'
           : 'var(--color-border)',
         borderLeftColor: isPending
-          ? 'var(--color-accent)'
+          ? 'var(--color-primary)'
           : confirm.status === 'confirmed'
             ? 'var(--color-semantic-green)'
             : 'var(--color-semantic-red)',
@@ -33,12 +33,9 @@ export function ConfirmBlock({ confirm, onConfirm, onReject }: ConfirmBlockProps
     >
       {/* Title */}
       <div
-        className="mb-2 flex items-center gap-1.5 text-base font-semibold"
-        style={{ color: 'var(--color-accent)' }}
+        className="mb-2 text-base font-semibold"
+        style={{ color: 'var(--color-primary)' }}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-        </svg>
         {confirm.title}
       </div>
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::State;
-use crate::storage::database::Database;
+use crate::storage::file_store::AppStorage;
 use crate::storage::crypto::SecureStorage;
 use crate::models::settings::AppSettings;
 use crate::llm::providers::LlmProviderTrait;
@@ -26,7 +26,7 @@ fn is_sensitive_key(key: &str) -> bool {
 /// API key fields are decrypted if SecureStorage is available.
 #[tauri::command]
 pub async fn get_settings(
-    db: State<'_, Arc<Database>>,
+    db: State<'_, Arc<AppStorage>>,
     crypto: State<'_, Option<Arc<SecureStorage>>>,
 ) -> Result<AppSettings, String> {
     let settings_map = db.get_all_settings().map_err(|e| e.to_string())?;
@@ -55,7 +55,7 @@ pub async fn get_settings(
 /// Also persists the API key under `apiKey:{primaryModel}` for per-provider storage.
 #[tauri::command]
 pub async fn update_settings(
-    db: State<'_, Arc<Database>>,
+    db: State<'_, Arc<AppStorage>>,
     crypto: State<'_, Option<Arc<SecureStorage>>>,
     settings: AppSettings,
 ) -> Result<(), String> {
@@ -106,7 +106,7 @@ pub async fn update_settings(
 /// Returns provider identifiers (e.g. "deepseek-v3", "openai") that have non-empty keys.
 #[tauri::command]
 pub async fn get_configured_providers(
-    db: State<'_, Arc<Database>>,
+    db: State<'_, Arc<AppStorage>>,
     crypto: State<'_, Option<Arc<SecureStorage>>>,
 ) -> Result<Vec<String>, String> {
     let prefix_map = db.get_settings_by_prefix("apiKey:").map_err(|e| e.to_string())?;
@@ -148,7 +148,7 @@ pub async fn get_configured_providers(
 /// and updates primaryModel + primaryApiKey in settings.
 #[tauri::command]
 pub async fn switch_provider(
-    db: State<'_, Arc<Database>>,
+    db: State<'_, Arc<AppStorage>>,
     crypto: State<'_, Option<Arc<SecureStorage>>>,
     provider: String,
 ) -> Result<(), String> {
@@ -188,7 +188,7 @@ pub async fn switch_provider(
 /// populate all provider tabs. Returns a map of provider → plaintext key.
 #[tauri::command]
 pub async fn get_all_provider_keys(
-    db: State<'_, Arc<Database>>,
+    db: State<'_, Arc<AppStorage>>,
     crypto: State<'_, Option<Arc<SecureStorage>>>,
 ) -> Result<HashMap<String, String>, String> {
     let prefix_map = db.get_settings_by_prefix("apiKey:").map_err(|e| e.to_string())?;
@@ -228,7 +228,7 @@ pub async fn get_all_provider_keys(
 /// Empty keys are removed from storage.
 #[tauri::command]
 pub async fn update_all_provider_keys(
-    db: State<'_, Arc<Database>>,
+    db: State<'_, Arc<AppStorage>>,
     crypto: State<'_, Option<Arc<SecureStorage>>>,
     keys: HashMap<String, String>,
 ) -> Result<(), String> {

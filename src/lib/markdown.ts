@@ -20,6 +20,9 @@ function esc(s: string): string {
 /** Apply inline formatting: bold, italic, inline code, strikethrough. */
 function inlineFmt(text: string): string {
   let s = esc(text)
+  // Restore <br> tags that the LLM uses for line breaks within table cells.
+  // esc() converts <br> to &lt;br&gt; — restore them as actual <br/>.
+  s = s.replace(/&lt;br\s*\/?&gt;/gi, '<br/>')
   // Inline code (must come first to avoid bold/italic inside code)
   s = s.replace(
     /`([^`]+)`/g,
@@ -111,7 +114,16 @@ function renderTable(lines: string[]): string {
 /** Render a fenced code block. */
 function renderCodeBlock(lines: string[], lang: string): string {
   const code = lines.map(esc).join('\n')
-  return `<div style="margin:12px 0;border-radius:8px;overflow:hidden;border:1px solid var(--color-border-subtle)"><div style="padding:6px 12px;background:var(--color-bg-base);font-size:0.75rem;color:var(--color-text-muted);font-family:var(--font-mono)">${esc(lang || 'code')}</div><pre style="margin:0;padding:12px 14px;overflow-x:auto;background:var(--color-bg-elevated);font-size:0.82rem;line-height:1.55;font-family:var(--font-mono);color:var(--color-text-primary)"><code>${code}</code></pre></div>`
+  const rawCode = lines.join('\n')
+  // Base64-encode the raw code for copy-to-clipboard via event delegation.
+  // btoa only handles Latin-1, so we encode UTF-8 via TextEncoder first.
+  const encoded = typeof btoa !== 'undefined'
+    ? btoa(Array.from(new TextEncoder().encode(rawCode), (b) => String.fromCharCode(b)).join(''))
+    : ''
+  const copyBtn = encoded
+    ? `<button data-copy-code="${encoded}" style="cursor:pointer;border:none;background:none;font-size:0.7rem;color:var(--color-text-muted);font-family:var(--font-mono);padding:2px 6px;border-radius:3px;transition:color 0.2s">复制</button>`
+    : ''
+  return `<div style="margin:12px 0;border-radius:8px;overflow:hidden;border:1px solid var(--color-border-subtle)"><div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--color-bg-base);font-size:0.75rem;color:var(--color-text-muted);font-family:var(--font-mono)"><span>${esc(lang || 'code')}</span>${copyBtn}</div><pre style="margin:0;padding:12px 14px;overflow-x:auto;background:var(--color-bg-elevated);font-size:0.82rem;line-height:1.55;font-family:var(--font-mono);color:var(--color-text-primary)"><code>${code}</code></pre></div>`
 }
 
 /**

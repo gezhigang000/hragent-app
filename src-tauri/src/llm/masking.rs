@@ -136,6 +136,13 @@ impl MaskingContext {
         for (placeholder, original) in pairs {
             result = result.replace(placeholder.as_str(), original.as_str());
         }
+
+        // Fallback: replace any remaining PII placeholders that weren't matched.
+        // This catches cases where LLM modified the placeholder format (e.g.
+        // removed brackets, changed case). Pattern: [PERSON_N], [COMPANY_N],
+        // [EMAIL_N], [PHONE_N] with optional brackets.
+        result = replace_residual_placeholders(&result);
+
         result
     }
 
@@ -147,6 +154,21 @@ impl MaskingContext {
     /// Get a read-only view of the mask map (original -> placeholder).
     pub fn mask_map(&self) -> &HashMap<String, String> {
         &self.mask_map
+    }
+
+    /// Merge another MaskingContext's mappings into this one.
+    /// New mappings from `other` are absorbed so that tool results masked
+    /// by a later iteration can still be unmasked by the combined context.
+    pub fn merge(&mut self, other: MaskingContext) {
+        for (original, placeholder) in other.mask_map {
+            self.unmask_map.entry(placeholder.clone()).or_insert(original.clone());
+            self.mask_map.entry(original).or_insert(placeholder);
+        }
+        // Advance counters to avoid collisions
+        self.counters.person = self.counters.person.max(other.counters.person);
+        self.counters.company = self.counters.company.max(other.counters.company);
+        self.counters.email = self.counters.email.max(other.counters.email);
+        self.counters.phone = self.counters.phone.max(other.counters.phone);
     }
 
     // -----------------------------------------------------------------------
@@ -470,6 +492,70 @@ fn find_unmasked_at(text: &str) -> Option<usize> {
         }
     }
     None
+}
+
+/// Replace residual PII placeholders that weren't matched during unmask.
+///
+/// Scans for patterns like `[PERSON_1]`, `COMPANY_2`, `[EMAIL_3]` etc.
+/// where the category is PERSON/COMPANY/EMAIL/PHONE followed by _N digits.
+/// Handles both bracketed `[PERSON_1]` and bare `PERSON_1` forms.
+/// Replaces with `[已脱敏]` to avoid leaking placeholder text to users.
+fn replace_residual_placeholders(text: &str) -> String {
+    const CATEGORIES: &[&str] = &["PERSON", "COMPANY", "EMAIL", "PHONE"];
+
+    let mut result = text.to_string();
+    let mut changed = true;
+
+    // Iterate until no more replacements (handles adjacent placeholders)
+    while changed {
+        changed = false;
+        for category in CATEGORIES {
+            // Try bracketed form first: [CATEGORY_N]
+            let bracket_prefix = format!("[{}_", category);
+            if let Some(start) = result.find(&bracket_prefix) {
+                let after = &result[start + bracket_prefix.len()..];
+                // Collect digits
+                let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+                if !digits.is_empty() {
+                    let end_offset = start + bracket_prefix.len() + digits.len();
+                    // Check for closing bracket
+                    let placeholder_end = if result.as_bytes().get(end_offset) == Some(&b']') {
+                        end_offset + 1
+                    } else {
+                        end_offset
+                    };
+                    result.replace_range(start..placeholder_end, "[已脱敏]");
+                    changed = true;
+                    continue;
+                }
+            }
+
+            // Try bare form: CATEGORY_N (not preceded by '[')
+            let bare_prefix = format!("{}_", category);
+            if let Some(start) = result.find(&bare_prefix) {
+                // Make sure it's not inside brackets (already handled above)
+                let preceded_by_bracket = start > 0 && result.as_bytes()[start - 1] == b'[';
+                if !preceded_by_bracket {
+                    let after = &result[start + bare_prefix.len()..];
+                    let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if !digits.is_empty() {
+                        let end_offset = start + bare_prefix.len() + digits.len();
+                        // Check for trailing ']' (malformed bracket)
+                        let placeholder_end = if result.as_bytes().get(end_offset) == Some(&b']') {
+                            end_offset + 1
+                        } else {
+                            end_offset
+                        };
+                        result.replace_range(start..placeholder_end, "[已脱敏]");
+                        changed = true;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -821,10 +907,10 @@ mod tests {
     fn test_unmask_without_prior_mask() {
         let ctx = MaskingContext::new(MaskingLevel::Standard);
         let input = "some text with [COMPANY_1] placeholder";
-        // Since no masking was performed, unmask_map is empty,
-        // the placeholder should remain as-is.
+        // Since no masking was performed, unmask_map is empty.
+        // The residual placeholder fallback replaces it with [已脱敏].
         let result = ctx.unmask(input);
-        assert_eq!(result, input);
+        assert_eq!(result, "some text with [已脱敏] placeholder");
     }
 
     // -- mask_messages with mixed roles ----------------------------------------
@@ -869,5 +955,48 @@ mod tests {
         let input = "号码18612345678";
         let result = ctx.mask_text(input);
         assert!(result.contains("[PHONE_1]"));
+    }
+
+    // -- Residual placeholder fallback -------------------------------------------
+
+    #[test]
+    fn test_residual_bracketed_placeholder_replaced() {
+        let text = "员工[PERSON_1]在[COMPANY_2]工作";
+        let result = replace_residual_placeholders(text);
+        assert_eq!(result, "员工[已脱敏]在[已脱敏]工作");
+    }
+
+    #[test]
+    fn test_residual_bare_placeholder_replaced() {
+        // LLM might strip brackets
+        let text = "员工PERSON_1在COMPANY_2工作";
+        let result = replace_residual_placeholders(text);
+        assert_eq!(result, "员工[已脱敏]在[已脱敏]工作");
+    }
+
+    #[test]
+    fn test_residual_email_phone_placeholder() {
+        let text = "联系[EMAIL_1]或[PHONE_3]";
+        let result = replace_residual_placeholders(text);
+        assert_eq!(result, "联系[已脱敏]或[已脱敏]");
+    }
+
+    #[test]
+    fn test_no_residual_when_no_placeholders() {
+        let text = "这是普通文本，没有占位符";
+        let result = replace_residual_placeholders(text);
+        assert_eq!(result, text);
+    }
+
+    #[test]
+    fn test_unmask_with_residual_fallback() {
+        let mut ctx = MaskingContext::new(MaskingLevel::Standard);
+        let input = "员工张三,在华为公司工作";
+        let _masked = ctx.mask_text(input);
+
+        // Simulate LLM output that references a placeholder that was never in the mask map
+        let llm_output = "分析结果：[PERSON_99]的薪酬偏低";
+        let unmasked = ctx.unmask(llm_output);
+        assert_eq!(unmasked, "分析结果：[已脱敏]的薪酬偏低");
     }
 }

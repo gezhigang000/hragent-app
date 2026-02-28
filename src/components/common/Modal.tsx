@@ -1,8 +1,16 @@
 /**
- * Modal — overlay + centered card.
+ * Modal — overlay + centered card with size variants and entrance animation.
  * Based on visual-prototype-zh.html .modal styles.
  */
 import type { ReactNode } from 'react'
+
+type ModalSize = 'sm' | 'md' | 'lg'
+
+const WIDTH_MAP: Record<ModalSize, string> = {
+  sm: '400px',
+  md: '520px',
+  lg: '640px',
+}
 
 interface ModalProps {
   open: boolean
@@ -10,9 +18,10 @@ interface ModalProps {
   title: string
   children: ReactNode
   footer?: ReactNode
+  size?: ModalSize
 }
 
-export function Modal({ open, onClose, title, children, footer }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, size = 'md' }: ModalProps) {
   if (!open) return null
 
   return (
@@ -24,8 +33,9 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
       }}
     >
       <div
-        className="max-h-[80vh] w-[520px] overflow-y-auto rounded-lg border"
+        className="max-h-[80vh] overflow-y-auto rounded-lg border animate-[modalIn_0.2s_ease-out]"
         style={{
+          width: WIDTH_MAP[size],
           background: 'var(--color-bg-card)',
           borderColor: 'var(--color-border)',
           boxShadow: 'var(--shadow-modal)',
@@ -33,14 +43,20 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between border-b px-5 py-4"
+          className="flex items-center justify-between border-b px-5 py-3.5"
           style={{ borderColor: 'var(--color-border)' }}
         >
           <h3 className="text-lg font-semibold">{title}</h3>
           <button
-            className="cursor-pointer border-none bg-transparent p-1 text-xl leading-none"
+            className="cursor-pointer border-none bg-transparent p-1 text-lg leading-none transition-colors duration-150"
             style={{ color: 'var(--color-text-muted)' }}
             onClick={onClose}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--color-text-secondary)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--color-text-muted)'
+            }}
           >
             &times;
           </button>

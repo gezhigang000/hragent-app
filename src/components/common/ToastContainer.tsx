@@ -1,24 +1,26 @@
 /**
  * ToastContainer — renders notification toasts from the notification store.
- * Positioned fixed at the top-right of the viewport.
+ * Positioned fixed at the bottom-right of the viewport.
+ * White card bg + left semantic-color border for clean, minimal appearance.
  */
 import { useNotificationStore } from '@/stores/notificationStore'
 import type { Notification, NotificationLevel } from '@/stores/notificationStore'
 
-const LEVEL_STYLES: Record<NotificationLevel, { bg: string; border: string; icon: string }> = {
+const LEVEL_STYLES: Record<NotificationLevel, { accent: string; icon: string }> = {
   error: {
-    bg: 'var(--color-semantic-red-bg)',
-    border: 'var(--color-semantic-red)',
+    accent: 'var(--color-semantic-red)',
     icon: '!',
   },
   warning: {
-    bg: 'var(--color-semantic-orange-bg)',
-    border: 'var(--color-semantic-orange)',
+    accent: 'var(--color-semantic-orange)',
     icon: '!',
   },
+  success: {
+    accent: 'var(--color-semantic-green)',
+    icon: '\u2713',
+  },
   info: {
-    bg: 'var(--color-semantic-blue-bg)',
-    border: 'var(--color-semantic-blue)',
+    accent: 'var(--color-semantic-blue)',
     icon: 'i',
   },
 }
@@ -29,16 +31,18 @@ function Toast({ notification }: { notification: Notification }) {
 
   return (
     <div
-      className="animate-[fadeUp_0.25s_ease] mb-2 flex max-w-[420px] items-start gap-2.5 rounded-lg border px-4 py-3 shadow-md"
+      className="animate-[fadeUp_0.25s_ease] flex max-w-[380px] items-start gap-2.5 rounded-lg border border-l-[3px] px-4 py-3"
       style={{
-        background: style.bg,
-        borderColor: style.border,
+        background: 'var(--color-bg-card)',
+        borderColor: 'var(--color-border)',
+        borderLeftColor: style.accent,
+        boxShadow: 'var(--shadow-md)',
       }}
     >
       {/* Icon */}
       <div
         className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-        style={{ background: style.border }}
+        style={{ background: style.accent }}
       >
         {style.icon}
       </div>
@@ -82,7 +86,7 @@ export function ToastContainer() {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed top-4 right-4 z-[9999]">
+    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col-reverse gap-2">
       {toasts.map((n) => (
         <Toast key={n.id} notification={n} />
       ))}

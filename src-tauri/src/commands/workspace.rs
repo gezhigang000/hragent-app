@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use tauri::State;
-use crate::storage::database::Database;
+use crate::storage::file_store::AppStorage;
 use crate::storage::workspace::WorkspaceManager;
 
 /// Select workspace directory.
 /// Validates the path, ensures directory structure, and saves to settings.
 #[tauri::command]
 pub async fn select_workspace(
-    db: State<'_, Arc<Database>>,
+    db: State<'_, Arc<AppStorage>>,
     path: String,
 ) -> Result<(), String> {
     let manager = WorkspaceManager::new(&path);
@@ -24,7 +24,7 @@ pub async fn select_workspace(
 /// Get workspace information (sizes, directory structure).
 #[tauri::command]
 pub async fn get_workspace_info(
-    db: State<'_, Arc<Database>>,
+    db: State<'_, Arc<AppStorage>>,
 ) -> Result<String, String> {
     let path = db.get_setting("workspacePath")
         .map_err(|e| e.to_string())?

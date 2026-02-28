@@ -8,6 +8,8 @@ beforeEach(() => {
     conversations: [],
     activeConversationId: null,
     messages: [],
+    busyConversations: new Set(),
+    streamStates: {},
     isStreaming: false,
     streamingContent: '',
     toolExecutions: [],
@@ -104,10 +106,15 @@ describe('chatStore — messages', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Streaming state
+// Streaming state (per-conversation)
 // ---------------------------------------------------------------------------
 
 describe('chatStore — streaming', () => {
+  beforeEach(() => {
+    // Set active conversation so legacy actions work
+    useChatStore.getState().setActiveConversation('c1')
+  })
+
   it('starts not streaming', () => {
     expect(useChatStore.getState().isStreaming).toBe(false)
     expect(useChatStore.getState().streamingContent).toBe('')
@@ -141,10 +148,97 @@ describe('chatStore — streaming', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Tool executions
+// Per-conversation streaming
+// ---------------------------------------------------------------------------
+
+describe('chatStore — per-conversation streaming', () => {
+  it('tracks streaming state per conversation', () => {
+    const store = useChatStore.getState()
+
+    store.setConversationStreaming('c1', true)
+    store.appendConversationStreamingContent('c1', 'Hello')
+    store.setConversationStreaming('c2', true)
+    store.appendConversationStreamingContent('c2', 'World')
+
+    const s = useChatStore.getState()
+    expect(s.streamStates['c1']?.isStreaming).toBe(true)
+    expect(s.streamStates['c1']?.streamingContent).toBe('Hello')
+    expect(s.streamStates['c2']?.isStreaming).toBe(true)
+    expect(s.streamStates['c2']?.streamingContent).toBe('World')
+  })
+
+  it('clears stream state for one conversation without affecting others', () => {
+    const store = useChatStore.getState()
+
+    store.setConversationStreaming('c1', true)
+    store.appendConversationStreamingContent('c1', 'A')
+    store.setConversationStreaming('c2', true)
+    store.appendConversationStreamingContent('c2', 'B')
+
+    store.clearConversationStreamState('c1')
+
+    const s = useChatStore.getState()
+    expect(s.streamStates['c1']).toBeUndefined()
+    expect(s.streamStates['c2']?.isStreaming).toBe(true)
+    expect(s.streamStates['c2']?.streamingContent).toBe('B')
+  })
+
+  it('derives legacy isStreaming from active conversation', () => {
+    const store = useChatStore.getState()
+
+    store.setConversationStreaming('c1', true)
+    store.setConversationStreaming('c2', true)
+
+    // Active = c1
+    store.setActiveConversation('c1')
+    expect(useChatStore.getState().isStreaming).toBe(true)
+
+    // Active = null
+    store.setActiveConversation(null)
+    expect(useChatStore.getState().isStreaming).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Busy conversations
+// ---------------------------------------------------------------------------
+
+describe('chatStore — busy conversations', () => {
+  it('starts with empty busy set', () => {
+    expect(useChatStore.getState().busyConversations.size).toBe(0)
+  })
+
+  it('adds and removes busy conversations', () => {
+    const store = useChatStore.getState()
+    store.addBusyConversation('c1')
+    store.addBusyConversation('c2')
+    expect(useChatStore.getState().busyConversations.size).toBe(2)
+
+    store.removeBusyConversation('c1')
+    expect(useChatStore.getState().busyConversations.size).toBe(1)
+    expect(useChatStore.getState().busyConversations.has('c2')).toBe(true)
+  })
+
+  it('setBusyConversations replaces entire set', () => {
+    const store = useChatStore.getState()
+    store.addBusyConversation('old')
+    store.setBusyConversations(['c1', 'c2', 'c3'])
+
+    const s = useChatStore.getState()
+    expect(s.busyConversations.size).toBe(3)
+    expect(s.busyConversations.has('old')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tool executions (legacy + per-conversation)
 // ---------------------------------------------------------------------------
 
 describe('chatStore — tool executions', () => {
+  beforeEach(() => {
+    useChatStore.getState().setActiveConversation('c1')
+  })
+
   it('starts with empty tool executions', () => {
     expect(useChatStore.getState().toolExecutions).toEqual([])
   })

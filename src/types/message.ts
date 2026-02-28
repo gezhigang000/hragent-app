@@ -260,7 +260,7 @@ export interface GeneratedFile {
 }
 
 export interface FileAction {
-  type: 'open' | 'preview' | 'download' | 'delete'
+  type: 'open' | 'preview' | 'download' | 'delete' | 'reveal'
   label: string
   enabled: boolean
 }

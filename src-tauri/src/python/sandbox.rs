@@ -48,7 +48,11 @@ impl SandboxConfig {
     pub fn for_workspace(workspace: &PathBuf) -> Self {
         let mut config = Self::default();
         config.allowed_paths = vec![
+            workspace.clone(),
             workspace.join("uploads"),
+            workspace.join("exports"),
+            workspace.join("reports"),
+            workspace.join("charts"),
             workspace.join("analysis"),
             workspace.join("temp"),
         ];
@@ -117,14 +121,19 @@ _ALLOWED_PATHS = {allowed_paths}
 # Set recursion limit
 sys.setrecursionlimit(2000)
 
-# Working directory
+# Working directory (workspace root — first element of _ALLOWED_PATHS)
 os.chdir(_ALLOWED_PATHS[0] if _ALLOWED_PATHS else '.')
 "#,
             allowed_paths = format!(
                 "[{}]",
                 self.allowed_paths
                     .iter()
-                    .map(|p| format!("r'{}'", p.display()))
+                    .map(|p| {
+                        let s = p.display().to_string();
+                        // Escape backslashes and single quotes to prevent Python injection
+                        let escaped = s.replace('\\', "\\\\").replace('\'', "\\'");
+                        format!("'{}'", escaped)
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -221,10 +230,19 @@ def _export_detail(df, filename, title='明细数据', preview_rows=15):
     import os
     export_dir = 'exports'
     os.makedirs(export_dir, exist_ok=True)
-    full_path = os.path.join(export_dir, f'{filename}.xlsx')
+    # Strip .xlsx/.xls extension if LLM included it (defensive against double extension)
+    base = filename
+    for ext in ('.xlsx', '.xls'):
+        if base.lower().endswith(ext):
+            base = base[:-len(ext)]
+            break
+    out_name = f'{base}.xlsx'
+    full_path = os.path.join(export_dir, out_name)
     df.to_excel(full_path, index=False, engine='openpyxl')
 
     n = len(df)
+    # Emit structured marker for auto-registration in DB (format="excel" matches frontend FILE_TYPE_ICON)
+    print(f'__GENERATED_FILE__:{{"path":"{full_path}","filename":"{out_name}","title":"{title}","format":"excel","rows":{n}}}')
     print(f'\n## {title}（共 {n} 条）')
     # Inline preview
     preview = df.head(preview_rows)
@@ -234,9 +252,9 @@ def _export_detail(df, filename, title='明细数据', preview_rows=15):
         rows.append([str(v) for v in row.values])
     _print_table(headers, rows)
     if n > preview_rows:
-        print(f'\n> 📋 仅展示前 {preview_rows} 条，完整 {n} 条明细已导出到 `{full_path}`')
+        print(f'\n> 完整 {n} 条明细已导出到 Excel')
     else:
-        print(f'\n> 📋 完整明细已导出到 `{full_path}`')
+        print(f'\n> 完整明细已导出到 Excel')
     return full_path
 "###;
 
@@ -282,8 +300,9 @@ mod tests {
     fn test_for_workspace() {
         let workspace = PathBuf::from("/tmp/workspace");
         let config = SandboxConfig::for_workspace(&workspace);
-        assert_eq!(config.allowed_paths.len(), 3);
-        assert!(config.allowed_paths[0].ends_with("uploads"));
+        assert_eq!(config.allowed_paths.len(), 7);
+        assert_eq!(config.allowed_paths[0], workspace);
+        assert!(config.allowed_paths[1].ends_with("uploads"));
     }
 
     #[test]

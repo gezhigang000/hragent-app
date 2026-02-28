@@ -110,18 +110,30 @@ impl PythonRunner {
             .spawn()
             .context("Failed to spawn python3 process")?;
 
+        // Take stdout/stderr handles out of the child so they can be read concurrently.
+        // This avoids pipe buffer deadlock: if stdout fills its OS buffer while we
+        // haven't started reading stderr, the process blocks and we deadlock.
+        let mut child_stdout = child.stdout.take();
+        let mut child_stderr = child.stderr.take();
+
         // Wait with timeout
         let result = tokio::time::timeout(timeout, async {
-            let mut stdout_buf = Vec::new();
-            let mut stderr_buf = Vec::new();
+            let stdout_handle = async {
+                let mut buf = Vec::new();
+                if let Some(ref mut stdout) = child_stdout {
+                    let _ = stdout.read_to_end(&mut buf).await;
+                }
+                buf
+            };
+            let stderr_handle = async {
+                let mut buf = Vec::new();
+                if let Some(ref mut stderr) = child_stderr {
+                    let _ = stderr.read_to_end(&mut buf).await;
+                }
+                buf
+            };
 
-            if let Some(ref mut stdout) = child.stdout {
-                let _ = stdout.read_to_end(&mut stdout_buf).await;
-            }
-            if let Some(ref mut stderr) = child.stderr {
-                let _ = stderr.read_to_end(&mut stderr_buf).await;
-            }
-
+            let (stdout_buf, stderr_buf) = tokio::join!(stdout_handle, stderr_handle);
             let status = child.wait().await?;
             Ok::<_, anyhow::Error>((stdout_buf, stderr_buf, status))
         })

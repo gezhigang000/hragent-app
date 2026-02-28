@@ -11,13 +11,15 @@ interface GeneratedFileCardProps {
 }
 
 const FILE_TYPE_ICON: Record<string, { label: string; bg: string; color: string }> = {
-  excel: { label: 'XLS', bg: 'rgba(52,199,89,0.15)', color: 'var(--color-semantic-green)' },
-  html: { label: 'HTML', bg: 'rgba(91,155,213,0.15)', color: 'var(--color-semantic-blue)' },
-  pdf: { label: 'PDF', bg: 'rgba(239,68,68,0.15)', color: 'var(--color-semantic-red)' },
-  csv: { label: 'CSV', bg: 'rgba(52,199,89,0.15)', color: 'var(--color-semantic-green)' },
-  json: { label: 'JSON', bg: 'rgba(168,168,168,0.15)', color: 'var(--color-text-muted)' },
-  png: { label: 'PNG', bg: 'rgba(155,126,216,0.15)', color: 'var(--color-semantic-purple)' },
-  py: { label: 'PY', bg: 'rgba(245,166,35,0.15)', color: 'var(--color-semantic-orange)' },
+  excel: { label: 'XLS', bg: 'var(--color-filetype-green-bg)', color: 'var(--color-semantic-green)' },
+  xlsx: { label: 'XLS', bg: 'var(--color-filetype-green-bg)', color: 'var(--color-semantic-green)' },
+  xls: { label: 'XLS', bg: 'var(--color-filetype-green-bg)', color: 'var(--color-semantic-green)' },
+  html: { label: 'HTML', bg: 'var(--color-filetype-blue-bg)', color: 'var(--color-semantic-blue)' },
+  pdf: { label: 'PDF', bg: 'var(--color-filetype-red-bg)', color: 'var(--color-semantic-red)' },
+  csv: { label: 'CSV', bg: 'var(--color-filetype-green-bg)', color: 'var(--color-semantic-green)' },
+  json: { label: 'JSON', bg: 'var(--color-filetype-gray-bg)', color: 'var(--color-text-muted)' },
+  png: { label: 'PNG', bg: 'var(--color-filetype-purple-bg)', color: 'var(--color-semantic-purple)' },
+  py: { label: 'PY', bg: 'var(--color-filetype-orange-bg)', color: 'var(--color-semantic-orange)' },
 }
 
 function formatFileSize(bytes: number): string {
@@ -59,7 +61,7 @@ export function GeneratedFileCard({ file, onAction }: GeneratedFileCardProps) {
             <span
               className="shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium"
               style={{
-                background: 'rgba(168,168,168,0.12)',
+                background: 'var(--color-bg-neutral)',
                 color: 'var(--color-text-muted)',
               }}
             >
@@ -76,10 +78,24 @@ export function GeneratedFileCard({ file, onAction }: GeneratedFileCardProps) {
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Actions — built-in Open + Open Folder, plus any extra from LLM */}
       <div className="flex shrink-0 items-center gap-1.5">
-        {file.actions
-          .filter((a) => a.enabled)
+        <Button
+          variant="ghost"
+          className="!px-2 !py-1 !text-xs"
+          onClick={() => onAction?.(file.id, 'open')}
+        >
+          Open
+        </Button>
+        <Button
+          variant="ghost"
+          className="!px-2 !py-1 !text-xs"
+          onClick={() => onAction?.(file.id, 'reveal')}
+        >
+          Open Folder
+        </Button>
+        {(file.actions ?? [])
+          .filter((a) => a.enabled && a.type !== 'open' && a.type !== 'reveal')
           .map((a) => (
             <Button
               key={a.type}

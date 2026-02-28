@@ -19,12 +19,9 @@ export function RootCauseBlock({ rootCause }: RootCauseBlockProps) {
     >
       {/* Title */}
       <div
-        className="mb-2.5 flex items-center gap-1.5 text-base font-semibold"
+        className="mb-2.5 text-base font-semibold"
         style={{ color: 'var(--color-semantic-red)' }}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-        </svg>
         {rootCause.title}
       </div>
 
@@ -36,7 +33,7 @@ export function RootCauseBlock({ rootCause }: RootCauseBlockProps) {
           style={{
             borderBottom:
               idx < rootCause.items.length - 1
-                ? '1px solid rgba(0,0,0,0.06)'
+                ? '1px solid var(--color-border-subtle)'
                 : 'none',
           }}
         >
@@ -44,7 +41,7 @@ export function RootCauseBlock({ rootCause }: RootCauseBlockProps) {
             <span
               className="rounded-xl px-2 py-0.5 text-xs font-bold"
               style={{
-                background: 'rgba(239,68,68,0.12)',
+                background: 'var(--color-semantic-red-bg)',
                 color: 'var(--color-semantic-red)',
               }}
             >
@@ -65,7 +62,7 @@ export function RootCauseBlock({ rootCause }: RootCauseBlockProps) {
           </div>
           <div
             className="mt-1 text-sm font-medium"
-            style={{ color: 'var(--color-accent)' }}
+            style={{ color: 'var(--color-primary)' }}
           >
             {item.action}
           </div>

@@ -10,16 +10,17 @@ import { useFileUpload, type UploadedFile } from '@/hooks/useFileUpload'
 import type { PendingFileInfo } from '@/hooks/useChat'
 
 const FILE_TYPE_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  excel: { label: 'XLS', bg: 'rgba(52,199,89,0.15)', color: '#34C759' },
-  csv:   { label: 'CSV', bg: 'rgba(52,199,89,0.15)', color: '#34C759' },
-  word:  { label: 'DOC', bg: 'rgba(91,155,213,0.15)', color: '#5B9BD5' },
-  pdf:   { label: 'PDF', bg: 'rgba(239,68,68,0.15)', color: '#EF4444' },
-  json:  { label: 'JSON', bg: 'rgba(212,168,67,0.15)', color: '#D4A843' },
+  excel: { label: 'XLS', bg: 'var(--color-filetype-green-bg)', color: 'var(--color-semantic-green)' },
+  csv:   { label: 'CSV', bg: 'var(--color-filetype-green-bg)', color: 'var(--color-semantic-green)' },
+  word:  { label: 'DOC', bg: 'var(--color-filetype-blue-bg)', color: 'var(--color-semantic-blue)' },
+  pdf:   { label: 'PDF', bg: 'var(--color-filetype-red-bg)', color: 'var(--color-semantic-red)' },
+  json:  { label: 'JSON', bg: 'var(--color-filetype-accent-bg)', color: 'var(--color-accent)' },
 }
 
 export function InputBar() {
   const [input, setInput] = useState('')
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([])
+  const [isSending, setIsSending] = useState(false)
   const { sendUserMessage, isStreaming, stopCurrentStream } = useChat()
   const { isUploading, selectAndUploadFile } = useFileUpload()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -33,18 +34,36 @@ export function InputBar() {
     }
   }, [input])
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = input.trim()
     if (!trimmed && pendingFiles.length === 0) return
-    if (isStreaming) return
+    if (isStreaming || isSending) return
 
+    setIsSending(true)
     const fileInfos: PendingFileInfo[] = pendingFiles.map((f) => ({
       id: f.id,
       fileName: f.fileName,
       fileType: f.fileType,
       fileSize: f.fileSize,
     }))
-    sendUserMessage(trimmed || '请分析这个文件', fileInfos.length > 0 ? fileInfos : undefined)
+
+    // Use a timeout to ensure isSending is always cleared, even if the IPC
+    // call hangs indefinitely (e.g. backend deadlock). The backend send_message
+    // command returns almost immediately after spawning the agent loop, so 15s
+    // is very generous.
+    const IPC_TIMEOUT_MS = 15_000
+    try {
+      await Promise.race([
+        sendUserMessage(trimmed || '请分析这个文件', fileInfos.length > 0 ? fileInfos : undefined),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('IPC timeout')), IPC_TIMEOUT_MS)
+        ),
+      ])
+    } catch (err) {
+      console.error('[InputBar] sendUserMessage failed or timed out:', err)
+    } finally {
+      setIsSending(false)
+    }
     setInput('')
     setPendingFiles([])
   }
@@ -76,7 +95,7 @@ export function InputBar() {
   }
 
   const hasPendingContent = input.trim() || pendingFiles.length > 0
-  const isSendDisabled = !hasPendingContent && !isStreaming
+  const isSendDisabled = (!hasPendingContent && !isStreaming) || isSending
 
   return (
     <div
@@ -86,7 +105,7 @@ export function InputBar() {
       }}
     >
       <div
-        className="mx-auto max-w-[860px] rounded-2xl"
+        className="mx-auto max-w-[860px] rounded-xl"
         style={{
           background: 'var(--color-bg-input)',
           boxShadow: 'var(--shadow-input)',
@@ -120,15 +139,15 @@ export function InputBar() {
                   <button
                     className="flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full border-none transition-colors"
                     style={{
-                      background: 'rgba(0,0,0,0.1)',
+                      background: 'var(--color-primary-subtle)',
                       color: 'var(--color-text-muted)',
                     }}
                     onClick={() => removeFile(file.id)}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.2)'
+                      e.currentTarget.style.background = 'var(--color-primary-muted)'
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.1)'
+                      e.currentTarget.style.background = 'var(--color-primary-subtle)'
                     }}
                   >
                     <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor">
@@ -147,7 +166,7 @@ export function InputBar() {
           <button
             className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border-none outline-none transition-all duration-150"
             style={{
-              color: isUploading ? 'var(--color-accent)' : 'var(--color-text-muted)',
+              color: isUploading ? 'var(--color-text-secondary)' : 'var(--color-text-muted)',
               background: 'transparent',
             }}
             title="上传文件（Excel/Word/PDF）"
@@ -159,7 +178,7 @@ export function InputBar() {
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'transparent'
-              e.currentTarget.style.color = isUploading ? 'var(--color-accent)' : 'var(--color-text-muted)'
+              e.currentTarget.style.color = isUploading ? 'var(--color-text-secondary)' : 'var(--color-text-muted)'
             }}
           >
             {isUploading ? (
@@ -200,7 +219,7 @@ export function InputBar() {
             style={{
               background:
                 isStreaming || hasPendingContent
-                  ? 'var(--color-accent)'
+                  ? 'var(--color-primary)'
                   : 'var(--color-border)',
               cursor: isSendDisabled ? 'default' : 'pointer',
             }}
@@ -208,11 +227,11 @@ export function InputBar() {
             disabled={isSendDisabled}
           >
             {isStreaming ? (
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="var(--color-text-on-accent)">
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="var(--color-text-on-primary)">
                 <rect x="4" y="4" width="16" height="16" rx="2" />
               </svg>
             ) : (
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="var(--color-text-on-accent)">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="var(--color-text-on-primary)">
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
               </svg>
             )}

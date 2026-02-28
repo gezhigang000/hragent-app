@@ -2,6 +2,7 @@
  * RichDataTable — data table with optional title and badge.
  * Based on visual-prototype-zh.html .tbl-wrap styles.
  */
+import { useState, useCallback } from 'react'
 import type { DataTable, TableCellValue } from '@/types/message'
 import { Badge } from '@/components/common/Badge'
 
@@ -18,6 +19,21 @@ const CELL_COLOR_MAP: Record<string, string> = {
 }
 
 export function RichDataTable({ table }: RichDataTableProps) {
+  const [copied, setCopied] = useState(false)
+
+  /** Copy table data as TSV (tab-separated values) for pasting into Excel. */
+  const handleCopy = useCallback(() => {
+    const header = table.columns.map((col) => col.label).join('\t')
+    const rows = table.rows.map((row) =>
+      table.columns.map((col) => row[col.key]?.text ?? '').join('\t'),
+    )
+    const tsv = [header, ...rows].join('\n')
+    navigator.clipboard.writeText(tsv).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [table])
+
   return (
     <div
       className="my-3 overflow-hidden rounded-lg border"
@@ -32,12 +48,21 @@ export function RichDataTable({ table }: RichDataTableProps) {
           className="flex items-center justify-between border-b px-4 py-3"
           style={{ borderColor: 'var(--color-border)' }}
         >
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            {table.title}
-          </span>
-          {table.badge && (
-            <Badge variant={table.badge.variant}>{table.badge.text}</Badge>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              {table.title}
+            </span>
+            {table.badge && (
+              <Badge variant={table.badge.variant}>{table.badge.text}</Badge>
+            )}
+          </div>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 text-xs transition-colors"
+            style={{ color: copied ? 'var(--color-semantic-green)' : 'var(--color-text-muted)' }}
+          >
+            {copied ? '已复制' : '复制表格'}
+          </button>
         </div>
       )}
 
@@ -64,7 +89,7 @@ export function RichDataTable({ table }: RichDataTableProps) {
             {table.rows.map((row, rowIdx) => (
               <tr
                 key={rowIdx}
-                style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}
+                style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
               >
                 {table.columns.map((col) => {
                   const cell: TableCellValue | undefined = row[col.key]

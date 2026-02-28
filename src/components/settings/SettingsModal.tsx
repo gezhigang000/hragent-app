@@ -202,8 +202,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <div
               className="mb-3 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs"
               style={{
-                background: 'var(--color-accent-bg-light)',
-                color: 'var(--color-accent)',
+                background: 'var(--color-primary-subtle)',
+                color: 'var(--color-primary)',
               }}
             >
               <span
@@ -276,12 +276,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             )}
 
             {keyValid[activeProvider] === true && (
-              <span className="text-sm" style={{ color: 'var(--color-success, #22c55e)' }}>
+              <span className="text-sm" style={{ color: 'var(--color-semantic-green)' }}>
                 Key 有效
               </span>
             )}
             {keyValid[activeProvider] === false && (
-              <span className="text-sm" style={{ color: 'var(--color-error, #ef4444)' }}>
+              <span className="text-sm" style={{ color: 'var(--color-semantic-red)' }}>
                 Key 无效或验证失败
               </span>
             )}
@@ -382,8 +382,8 @@ function TabButton({
     <button
       className="cursor-pointer rounded-xl border-none px-3 py-1.5 text-sm font-medium transition-colors duration-150"
       style={{
-        background: active ? 'var(--color-accent-bg-light)' : 'transparent',
-        color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
+        background: active ? 'var(--color-primary-subtle)' : 'transparent',
+        color: active ? 'var(--color-primary)' : 'var(--color-text-muted)',
       }}
       onClick={onClick}
     >
@@ -405,8 +405,8 @@ function SubTabButton({
     <button
       className="cursor-pointer rounded-lg border-none px-2.5 py-1 text-xs font-medium transition-colors duration-150"
       style={{
-        background: active ? 'var(--color-accent-bg-light)' : 'transparent',
-        color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
+        background: active ? 'var(--color-primary-subtle)' : 'transparent',
+        color: active ? 'var(--color-primary)' : 'var(--color-text-muted)',
       }}
       onClick={onClick}
     >

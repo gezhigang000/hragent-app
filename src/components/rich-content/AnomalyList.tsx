@@ -33,7 +33,7 @@ export function AnomalyList({ anomalies }: AnomalyListProps) {
         <div
           key={a.id}
           className="flex items-start gap-2.5 px-4 py-3"
-          style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}
+          style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
         >
           {/* Priority dot */}
           <div

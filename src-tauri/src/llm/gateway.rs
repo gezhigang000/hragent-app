@@ -9,9 +9,9 @@
 //! 5. Unmasks the response content before returning to the caller.
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Result;
-use futures::StreamExt;
 use tokio::sync::Mutex;
 
 use crate::llm::masking::{MaskingContext, MaskingLevel};
@@ -26,30 +26,35 @@ use crate::llm::router::{self, RouteResult};
 use crate::llm::streaming::*;
 use crate::llm::tools;
 use crate::models::settings::AppSettings;
-use crate::storage::database::Database;
+use crate::storage::file_store::AppStorage;
+
+/// Maximum number of concurrent agent loops.
+pub const MAX_CONCURRENT_AGENTS: usize = 3;
 
 /// Active streaming task handle; dropping the sender cancels the stream.
 struct ActiveTask {
     id: String,
+    conversation_id: String,
     cancel: tokio::sync::watch::Sender<bool>,
+    started_at: std::time::Instant,
 }
 
 /// The central LLM gateway.
 ///
 /// Owns a reference to the database (for future audit logging) and tracks
-/// the currently active streaming task so it can be cancelled on demand.
+/// currently active streaming tasks so they can be cancelled on demand.
 pub struct LlmGateway {
     #[allow(dead_code)]
-    db: Arc<Database>,
-    active_task: Arc<Mutex<Option<ActiveTask>>>,
+    db: Arc<AppStorage>,
+    active_tasks: Arc<Mutex<HashMap<String, ActiveTask>>>,
 }
 
 impl LlmGateway {
     /// Create a new gateway backed by the given database.
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<AppStorage>) -> Self {
         Self {
             db,
-            active_task: Arc::new(Mutex::new(None)),
+            active_tasks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -94,7 +99,7 @@ impl LlmGateway {
     /// Send a message and stream the response.
     ///
     /// Returns a `(task_id, StreamBox)` tuple. The task ID can be passed to
-    /// [`cancel_streaming`] to abort the stream early.
+    /// [`cancel_conversation`] to abort the stream early.
     ///
     /// # Parameters
     /// - `system_prompt`: Optional system prompt to prepend to messages.
@@ -118,8 +123,10 @@ impl LlmGateway {
         system_prompt: Option<&str>,
         tool_defs_override: Option<Vec<ToolDefinition>>,
         max_tokens: u32,
-    ) -> Result<(String, StreamBox, MaskingContext)> {
+        conversation_id: Option<&str>,
+    ) -> Result<(String, StreamBox, MaskingContext, tokio::sync::watch::Receiver<bool>)> {
         let task_id = uuid::Uuid::new_v4().to_string();
+        let conv_id = conversation_id.unwrap_or("").to_string();
 
         // 1. Route to best provider
         let task_type = router::infer_task_type(&messages);
@@ -161,12 +168,14 @@ impl LlmGateway {
         // 4. Create cancellation channel
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
 
-        // Store active task
+        // Store active task in per-conversation map
         {
-            let mut active = self.active_task.lock().await;
-            *active = Some(ActiveTask {
+            let mut tasks = self.active_tasks.lock().await;
+            tasks.insert(conv_id.clone(), ActiveTask {
                 id: task_id.clone(),
+                conversation_id: conv_id,
                 cancel: cancel_tx,
+                started_at: std::time::Instant::now(),
             });
         }
 
@@ -175,23 +184,18 @@ impl LlmGateway {
             route.provider, route.api_key.len(), route.model_hint);
         let stream = dispatch_stream(&route, request).await?;
 
-        // 6. Wrap stream with cancellation support
-        let wrapped = stream.take_while(move |_| {
-            let cancel = cancel_rx.clone();
-            async move { !*cancel.borrow() }
-        });
-
-        Ok((task_id, Box::pin(wrapped), mask_ctx))
+        // 6. Return raw stream + cancel_rx — caller uses tokio::select! for cancellation
+        Ok((task_id, stream, mask_ctx, cancel_rx))
     }
 
-    /// Cancel the active streaming task.
+    /// Cancel the streaming task for a specific conversation.
     ///
-    /// If there is no active task, this is a no-op.
-    pub async fn cancel_streaming(&self) -> Result<()> {
-        let mut active = self.active_task.lock().await;
-        if let Some(task) = active.take() {
+    /// If there is no active task for this conversation, this is a no-op.
+    pub async fn cancel_conversation(&self, conversation_id: &str) -> Result<()> {
+        let mut tasks = self.active_tasks.lock().await;
+        if let Some(task) = tasks.remove(conversation_id) {
             let _ = task.cancel.send(true);
-            log::info!("Cancelled streaming task: {}", task.id);
+            log::info!("Cancelled streaming task for conversation: {} (task_id={})", conversation_id, task.id);
         }
         Ok(())
     }
@@ -235,10 +239,53 @@ impl LlmGateway {
         })
     }
 
-    /// Get the ID of the currently active streaming task, if any.
-    pub async fn active_task_id(&self) -> Option<String> {
-        let active = self.active_task.lock().await;
-        active.as_ref().map(|t| t.id.clone())
+    /// Returns true if there is at least one active task.
+    pub async fn is_busy(&self) -> bool {
+        let tasks = self.active_tasks.lock().await;
+        !tasks.is_empty()
+    }
+
+    /// Returns true if a specific conversation has an active task.
+    pub async fn is_conversation_busy(&self, conversation_id: &str) -> bool {
+        let tasks = self.active_tasks.lock().await;
+        tasks.contains_key(conversation_id)
+    }
+
+    /// Get all conversation IDs that currently have active tasks.
+    pub async fn get_busy_conversations(&self) -> Vec<String> {
+        let tasks = self.active_tasks.lock().await;
+        tasks.keys().cloned().collect()
+    }
+
+    /// Clear the active task for a specific conversation.
+    /// Called when the agent loop finishes.
+    pub async fn clear_task(&self, conversation_id: &str) {
+        let mut tasks = self.active_tasks.lock().await;
+        if let Some(task) = tasks.remove(conversation_id) {
+            log::info!("Cleared active task: id={}, conversation_id={}", task.id, task.conversation_id);
+        }
+    }
+
+    /// Mark the gateway as busy for a given conversation.
+    /// Used to reserve the agent before spawning the agent loop.
+    /// Returns an error string if the conversation is already busy or max concurrency reached.
+    pub async fn set_busy(&self, conversation_id: &str) -> Result<(), String> {
+        let mut tasks = self.active_tasks.lock().await;
+        if tasks.contains_key(conversation_id) {
+            return Err("This conversation is already processing.".to_string());
+        }
+        if tasks.len() >= MAX_CONCURRENT_AGENTS {
+            return Err(format!("Maximum concurrent conversations reached ({}). Please wait.", MAX_CONCURRENT_AGENTS));
+        }
+        let (cancel_tx, _) = tokio::sync::watch::channel(false);
+        tasks.insert(conversation_id.to_string(), ActiveTask {
+            id: format!("pre-{}", uuid::Uuid::new_v4()),
+            conversation_id: conversation_id.to_string(),
+            cancel: cancel_tx,
+            started_at: std::time::Instant::now(),
+        });
+        log::info!("Gateway marked busy for conversation {} (active={})", conversation_id, tasks.len());
+        Ok(())
     }
 }
 

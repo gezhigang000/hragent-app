@@ -31,7 +31,7 @@ impl DeepSeekR1Provider {
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
-            client: Client::new(),
+            client: super::build_http_client(),
         }
     }
 }

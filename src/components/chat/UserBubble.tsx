@@ -29,7 +29,7 @@ export function UserBubble({ message }: UserBubbleProps) {
       </div>
 
       {/* Body — offset by avatar width, right-aligned */}
-      <div className="flex flex-col items-end" style={{ paddingRight: '36px' }}>
+      <div className="flex flex-col items-end pr-9">
         {/* File attachments */}
         {hasFiles && (
           <div className="mb-1.5 flex flex-col items-end gap-1">
