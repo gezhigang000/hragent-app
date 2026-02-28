@@ -65,6 +65,8 @@ Write-Host "Extracting to $TARGET_DIR\..."
 if (Test-Path $TARGET_DIR) {
     Remove-Item -Recurse -Force $TARGET_DIR
 }
+# Ensure the target is fully removed before rename
+Start-Sleep -Milliseconds 500
 
 $parentDir = Split-Path $TARGET_DIR -Parent
 # tar.exe is built into Windows 10+ — use full path to avoid Git Bash's /usr/bin/tar
@@ -82,7 +84,8 @@ if (-not (Test-Path $extractedDir)) {
     Write-Error "Expected directory '$extractedDir' not found after extraction. Archive format may have changed."
     exit 1
 }
-Rename-Item $extractedDir $TARGET_DIR
+# Move-Item works when target doesn't exist; Rename-Item fails if target path looks like device name
+Move-Item -Path $extractedDir -Destination $TARGET_DIR -Force
 
 Write-Host "Python binary: $PYTHON_BIN"
 & $PYTHON_BIN --version
