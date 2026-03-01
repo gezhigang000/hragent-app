@@ -21,6 +21,9 @@ interface SettingsState extends Settings {
   setAutoModelRouting: (enabled: boolean) => void
   setTavilyApiKey: (key: string) => void
   setConfiguredProviders: (providers: LlmProvider[]) => void
+  setCustomOpenaiBaseUrl: (url: string) => void
+  setCustomOpenaiModelName: (name: string) => void
+  setCustomOpenaiSupportsTools: (supports: boolean) => void
   markLoaded: () => void
 }
 
@@ -42,6 +45,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setTavilyApiKey: (tavilyApiKey) => set({ tavilyApiKey }),
 
   setConfiguredProviders: (configuredProviders) => set({ configuredProviders }),
+
+  setCustomOpenaiBaseUrl: (customOpenaiBaseUrl) => set({ customOpenaiBaseUrl }),
+
+  setCustomOpenaiModelName: (customOpenaiModelName) => set({ customOpenaiModelName }),
+
+  setCustomOpenaiSupportsTools: (customOpenaiSupportsTools) => set({ customOpenaiSupportsTools }),
 
   markLoaded: () => set({ isLoaded: true }),
 }))

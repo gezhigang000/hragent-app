@@ -3,7 +3,7 @@
  * Based on tech-architecture.md §3.2
  */
 
-export type LlmProvider = 'deepseek-v3' | 'qwen-plus' | 'volcano' | 'openai' | 'claude'
+export type LlmProvider = 'deepseek-v3' | 'qwen-plus' | 'volcano' | 'openai' | 'claude' | 'custom-openai'
 export type DataMaskingLevel = 'strict' | 'standard' | 'relaxed'
 
 export interface Settings {
@@ -24,6 +24,11 @@ export interface Settings {
   tempFileRetentionDays: number // default 7
   keepOldVersions: number // default 1
   tavilyApiKey: string
+
+  // Custom OpenAI fields
+  customOpenaiBaseUrl: string
+  customOpenaiModelName: string
+  customOpenaiSupportsTools: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,6 +42,9 @@ export const DEFAULT_SETTINGS: Settings = {
   tempFileRetentionDays: 7,
   keepOldVersions: 1,
   tavilyApiKey: '',
+  customOpenaiBaseUrl: '',
+  customOpenaiModelName: '',
+  customOpenaiSupportsTools: false,
 }
 
 export const LLM_PROVIDER_LABELS: Record<LlmProvider, string> = {
@@ -45,6 +53,7 @@ export const LLM_PROVIDER_LABELS: Record<LlmProvider, string> = {
   'volcano': '火山引擎',
   'openai': 'GPT-4o',
   'claude': 'Claude',
+  'custom-openai': '通用模型',
 }
 
 /** Provider model capabilities — mirrors router::get_provider_capabilities in Rust */
@@ -54,4 +63,5 @@ export const PROVIDER_CAPABILITIES: Record<LlmProvider, { modelsDesc: string; ha
   'openai': { modelsDesc: '默认: GPT-4o', hasReasoning: false },
   'claude': { modelsDesc: '默认: Claude Sonnet', hasReasoning: false },
   'volcano': { modelsDesc: '默认: 字节跳动大模型', hasReasoning: false },
+  'custom-openai': { modelsDesc: '自定义 OpenAI 兼容模型', hasReasoning: false },
 }

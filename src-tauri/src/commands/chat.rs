@@ -9,6 +9,7 @@ use crate::llm::masking::{MaskingContext, MaskingLevel};
 use crate::llm::tool_executor::{self, ToolContext};
 use crate::llm::orchestrator::{self, AnalysisAction, StepConfig};
 use crate::llm::prompts;
+use crate::llm::prompt_guard;
 use crate::storage::crypto::SecureStorage;
 use crate::models::settings::AppSettings;
 
@@ -290,7 +291,8 @@ pub async fn send_message(
         settings.primary_api_key.chars().take(10).collect::<String>());
 
     // Check if API key is configured
-    if settings.primary_api_key.is_empty() {
+    // custom-openai is exempt — local models don't need API keys, but must have a base URL
+    if settings.primary_api_key.is_empty() && settings.primary_model != "custom-openai" {
         let provider_name = match settings.primary_model.as_str() {
             "deepseek-v3" => "DeepSeek",
             "qwen-plus" => "通义千问",
@@ -300,6 +302,17 @@ pub async fn send_message(
             _ => &settings.primary_model,
         };
         let error_msg = format!("请先在设置中配置 {} 的 API Key", provider_name);
+        app.emit("streaming:error", serde_json::json!({
+            "conversationId": conversation_id,
+            "error": error_msg,
+        }))
+            .map_err(|e| e.to_string())?;
+        return Err(error_msg);
+    }
+
+    // custom-openai must have a base URL configured
+    if settings.primary_model == "custom-openai" && settings.custom_openai_base_url.trim().is_empty() {
+        let error_msg = "请先在设置中配置通用模型的 API Base URL".to_string();
         app.emit("streaming:error", serde_json::json!({
             "conversationId": conversation_id,
             "error": error_msg,
@@ -892,6 +905,23 @@ async fn agent_loop(
                                 delta_count += 1;
                                 iter_content.push_str(&clean);
                                 full_content.push_str(&clean);
+
+                                // Leak detection: check periodically to avoid per-delta overhead
+                                if delta_count % 5 == 0 || full_content.len() > 200 {
+                                    if let prompt_guard::LeakCheckResult::Leaked { matched_count, .. } =
+                                        prompt_guard::check_for_leak(&full_content)
+                                    {
+                                        log::warn!(
+                                            "[AGENT] Prompt leak detected mid-stream for {} ({} fingerprints)",
+                                            conversation_id, matched_count
+                                        );
+                                        full_content.clear();
+                                        full_content.push_str(prompt_guard::LEAK_REFUSAL);
+                                        iter_content.clear();
+                                        break;
+                                    }
+                                }
+
                                 let _ = app.emit(
                                     "streaming:delta",
                                     serde_json::json!({
@@ -1166,6 +1196,15 @@ fn finish_agent(
         Some(ctx) => ctx.unmask(full_content),
         None => full_content.to_string(),
     };
+
+    // Leak detection at persistence boundary
+    let (unmasked_content, was_leaked) = prompt_guard::filter_leaked_content(&unmasked_content);
+    if was_leaked {
+        log::warn!(
+            "[finish_agent] Prompt leak caught at persistence for conv={}",
+            conversation_id
+        );
+    }
 
     let unmasked_trimmed = unmasked_content.trim();
 

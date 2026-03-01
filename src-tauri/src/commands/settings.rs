@@ -7,6 +7,7 @@ use crate::models::settings::AppSettings;
 use crate::llm::providers::LlmProviderTrait;
 use crate::llm::providers::{
     claude::ClaudeProvider,
+    custom_openai::CustomOpenAiProvider,
     deepseek_v3::DeepSeekV3Provider,
     openai::OpenAiProvider,
     qwen::QwenProvider,
@@ -98,6 +99,17 @@ pub async fn update_settings(
         }
         db.set_setting(&per_provider_key, &value_str).map_err(|e| e.to_string())?;
     }
+
+    // Persist custom OpenAI fields (stored as separate config keys, not in main JSON)
+    db.set_setting("customOpenai:baseUrl", &settings.custom_openai_base_url)
+        .map_err(|e| e.to_string())?;
+    db.set_setting("customOpenai:modelName", &settings.custom_openai_model_name)
+        .map_err(|e| e.to_string())?;
+    db.set_setting(
+        "customOpenai:supportsTools",
+        if settings.custom_openai_supports_tools { "true" } else { "false" },
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -259,7 +271,26 @@ pub async fn update_all_provider_keys(
 pub async fn validate_api_key(
     provider: String,
     api_key: String,
+    base_url: Option<String>,
+    model_name: Option<String>,
 ) -> Result<bool, String> {
+    // custom-openai allows empty API key (local models), but requires base_url
+    if provider == "custom-openai" {
+        let url = base_url.clone().unwrap_or_default();
+        if url.trim().is_empty() {
+            return Err("请填写 API Base URL".to_string());
+        }
+        let model = model_name.clone().unwrap_or_else(|| "default".to_string());
+        let p = CustomOpenAiProvider::new(api_key, url, model, false);
+        return match p.validate_key().await {
+            Ok(valid) => Ok(valid),
+            Err(e) => {
+                log::warn!("Custom OpenAI validation failed: {}", e);
+                Err(format!("验证失败: {}", e))
+            }
+        };
+    }
+
     if api_key.trim().is_empty() {
         return Ok(false);
     }

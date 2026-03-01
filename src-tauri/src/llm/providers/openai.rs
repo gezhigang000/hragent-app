@@ -246,13 +246,14 @@ pub(super) async fn send_openai_compat(
 ) -> Result<LlmResponse> {
     let body = build_request_body(request, model, false, include_tools);
 
-    let resp = client
+    let mut req = client
         .post(url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await?;
+        .json(&body);
+    if !api_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    }
+    let resp = req.send().await?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -281,13 +282,14 @@ pub(super) async fn stream_openai_compat(
 ) -> Result<StreamBox> {
     let body = build_request_body(request, model, true, include_tools);
 
-    let resp = client
+    let mut req = client
         .post(url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await?;
+        .json(&body);
+    if !api_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    }
+    let resp = req.send().await?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -322,13 +324,14 @@ pub(super) async fn validate_key_openai_compat(
 
     let body = build_request_body(&request, model, false, false);
 
-    let resp = client
+    let mut req = client
         .post(url)
-        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await?;
+        .json(&body);
+    if !api_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    }
+    let resp = req.send().await?;
 
     Ok(resp.status().is_success())
 }

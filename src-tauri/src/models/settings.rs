@@ -34,6 +34,13 @@ pub struct AppSettings {
     pub keep_old_versions: u32,
     #[serde(default)]
     pub tavily_api_key: String,
+    // Custom OpenAI fields — stored as separate config keys, not in the main JSON
+    #[serde(skip)]
+    pub custom_openai_base_url: String,
+    #[serde(skip)]
+    pub custom_openai_model_name: String,
+    #[serde(skip)]
+    pub custom_openai_supports_tools: bool,
 }
 
 impl Default for AppSettings {
@@ -53,6 +60,9 @@ impl Default for AppSettings {
             temp_file_retention_days: 7,
             keep_old_versions: 1,
             tavily_api_key: String::new(),
+            custom_openai_base_url: String::new(),
+            custom_openai_model_name: String::new(),
+            custom_openai_supports_tools: false,
         }
     }
 }
@@ -90,6 +100,9 @@ impl AppSettings {
             temp_file_retention_days: get_u32("tempFileRetentionDays", defaults.temp_file_retention_days),
             keep_old_versions: get_u32("keepOldVersions", defaults.keep_old_versions),
             tavily_api_key: get_str("tavilyApiKey", &defaults.tavily_api_key),
+            custom_openai_base_url: get_str("customOpenai:baseUrl", ""),
+            custom_openai_model_name: get_str("customOpenai:modelName", ""),
+            custom_openai_supports_tools: get_bool("customOpenai:supportsTools", false),
         }
     }
 }

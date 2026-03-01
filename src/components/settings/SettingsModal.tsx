@@ -31,6 +31,7 @@ const PROVIDER_LIST: { value: LlmProvider; label: string }[] = [
   { value: 'volcano', label: '火山引擎' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'claude', label: 'Claude' },
+  { value: 'custom-openai', label: '通用模型' },
 ]
 
 const API_KEY_PLACEHOLDERS: Record<LlmProvider, string> = {
@@ -39,6 +40,7 @@ const API_KEY_PLACEHOLDERS: Record<LlmProvider, string> = {
   'volcano': 'API Key...',
   'openai': 'sk-...',
   'claude': 'sk-ant-...',
+  'custom-openai': 'API Key（本地模型可留空）',
 }
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
@@ -58,6 +60,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [showApiKey, setShowApiKey] = useState(false)
   const [showTavilyKey, setShowTavilyKey] = useState(false)
 
+  // Custom OpenAI fields
+  const [customBaseUrl, setCustomBaseUrl] = useState('')
+  const [customModelName, setCustomModelName] = useState('')
+  const [customSupportsTools, setCustomSupportsTools] = useState(false)
+
   // Load settings + all provider keys when modal opens
   useEffect(() => {
     if (!open) return
@@ -69,6 +76,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         const [saved, allKeys] = await Promise.all([getSettings(), getAllProviderKeys()])
         settings.setSettings(saved)
         setActiveProvider(saved.primaryModel)
+
+        // Load custom OpenAI fields
+        setCustomBaseUrl(saved.customOpenaiBaseUrl ?? '')
+        setCustomModelName(saved.customOpenaiModelName ?? '')
+        setCustomSupportsTools(saved.customOpenaiSupportsTools ?? false)
 
         // Build key cache from all provider keys
         const cache: Partial<Record<LlmProvider, string>> = {}
@@ -113,6 +125,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         tempFileRetentionDays: settings.tempFileRetentionDays,
         keepOldVersions: settings.keepOldVersions,
         tavilyApiKey: settings.tavilyApiKey,
+        customOpenaiBaseUrl: customBaseUrl,
+        customOpenaiModelName: customModelName,
+        customOpenaiSupportsTools: customSupportsTools,
       })
 
       // Refresh configured providers list
@@ -254,14 +269,23 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 setValidating(true)
                 setKeyValid((prev) => ({ ...prev, [activeProvider]: null }))
                 try {
-                  const valid = await validateApiKey(activeProvider, currentKeyForProvider)
+                  const valid = await validateApiKey(
+                    activeProvider,
+                    currentKeyForProvider,
+                    activeProvider === 'custom-openai' ? customBaseUrl : undefined,
+                    activeProvider === 'custom-openai' ? customModelName : undefined,
+                  )
                   setKeyValid((prev) => ({ ...prev, [activeProvider]: valid }))
                 } catch {
                   setKeyValid((prev) => ({ ...prev, [activeProvider]: false }))
                 }
                 setValidating(false)
               }}
-              disabled={!currentKeyForProvider || validating}
+              disabled={
+                activeProvider === 'custom-openai'
+                  ? !customBaseUrl || validating
+                  : !currentKeyForProvider || validating
+              }
             >
               {validating ? '验证中...' : '验证 Key'}
             </Button>
@@ -286,6 +310,56 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </span>
             )}
           </div>
+
+          {/* Custom OpenAI extra fields */}
+          {activeProvider === 'custom-openai' && (
+            <>
+              <FormGroup
+                label="API Base URL"
+                desc="OpenAI 兼容接口地址（如 http://localhost:11434、https://api.groq.com/openai）"
+              >
+                <FormInput
+                  value={customBaseUrl}
+                  placeholder="http://localhost:11434"
+                  onChange={(v) => setCustomBaseUrl(v)}
+                />
+              </FormGroup>
+
+              <FormGroup
+                label="模型名称"
+                desc="使用的模型 ID（如 llama3、gpt-4o、mixtral-8x7b）"
+              >
+                <FormInput
+                  value={customModelName}
+                  placeholder="llama3"
+                  onChange={(v) => setCustomModelName(v)}
+                />
+              </FormGroup>
+
+              <div className="mb-4">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={customSupportsTools}
+                    onChange={(e) => setCustomSupportsTools(e.target.checked)}
+                    className="h-4 w-4 rounded"
+                  />
+                  <span
+                    className="text-sm"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    支持工具调用（Function Calling）
+                  </span>
+                </label>
+                <div
+                  className="mt-1 text-xs"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  薪酬分析流程需要工具调用。不支持的模型仅可用于日常咨询。
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Model info */}
           {providerCaps && (

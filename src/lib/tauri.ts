@@ -271,12 +271,21 @@ export function updateSettings(settings: Settings): Promise<void> {
  *
  * @param provider - The LLM provider identifier (e.g. 'deepseek-v3', 'openai')
  * @param apiKey - The API key to validate
+ * @param baseUrl - Optional custom base URL (for custom-openai provider)
+ * @param modelName - Optional model name (for custom-openai provider)
  * @returns `true` if the key is valid, `false` otherwise
  */
-export function validateApiKey(provider: string, apiKey: string): Promise<boolean> {
+export function validateApiKey(
+  provider: string,
+  apiKey: string,
+  baseUrl?: string,
+  modelName?: string,
+): Promise<boolean> {
   return invoke<boolean>('validate_api_key', {
     provider,
     apiKey,
+    baseUrl: baseUrl ?? null,
+    modelName: modelName ?? null,
   })
 }
 

@@ -60,6 +60,11 @@ pub fn get_provider_capabilities(provider: &str) -> ProviderCapabilities {
             reasoning_provider: None,
             models_desc: "主力: 字节跳动大模型",
         },
+        "custom-openai" => ProviderCapabilities {
+            primary_provider: "custom-openai",
+            reasoning_provider: None,
+            models_desc: "自定义 OpenAI 兼容模型",
+        },
         _ => ProviderCapabilities {
             primary_provider: "deepseek-v3",
             reasoning_provider: None,
@@ -87,7 +92,7 @@ pub enum TaskType {
 /// Result of routing: which provider + model to use.
 #[derive(Debug, Clone)]
 pub struct RouteResult {
-    /// Provider identifier, e.g. "deepseek-v3", "openai", "claude", "volcano"
+    /// Provider identifier, e.g. "deepseek-v3", "openai", "claude", "volcano", "custom-openai"
     pub provider: String,
     /// API key for the selected provider
     pub api_key: String,
@@ -95,6 +100,8 @@ pub struct RouteResult {
     pub model_hint: String,
     /// Whether this route supports tool use
     pub use_tools: bool,
+    /// Custom base URL (only used by custom-openai)
+    pub base_url: String,
 }
 
 /// Infer the task type from the conversation messages.
@@ -155,6 +162,17 @@ pub fn infer_task_type(messages: &[ChatMessage]) -> TaskType {
 pub fn select_route(task_type: &TaskType, settings: &AppSettings) -> RouteResult {
     let caps = get_provider_capabilities(&settings.primary_model);
 
+    // Custom OpenAI: populate base_url, model_hint, and use_tools from settings
+    if settings.primary_model == "custom-openai" {
+        return RouteResult {
+            provider: "custom-openai".to_string(),
+            api_key: settings.primary_api_key.clone(),
+            model_hint: settings.custom_openai_model_name.clone(),
+            use_tools: settings.custom_openai_supports_tools,
+            base_url: settings.custom_openai_base_url.clone(),
+        };
+    }
+
     // If auto routing is disabled, always use primary model
     if !settings.auto_model_routing {
         return RouteResult {
@@ -162,6 +180,7 @@ pub fn select_route(task_type: &TaskType, settings: &AppSettings) -> RouteResult
             api_key: settings.primary_api_key.clone(),
             model_hint: String::new(),
             use_tools: true,
+            base_url: String::new(),
         };
     }
 
@@ -173,6 +192,7 @@ pub fn select_route(task_type: &TaskType, settings: &AppSettings) -> RouteResult
             api_key: settings.primary_api_key.clone(),
             model_hint: String::new(),
             use_tools: true,
+            base_url: String::new(),
         },
         // Reasoning tasks use the reasoning variant if available (same API key)
         TaskType::Reasoning => {
@@ -182,6 +202,7 @@ pub fn select_route(task_type: &TaskType, settings: &AppSettings) -> RouteResult
                     api_key: settings.primary_api_key.clone(),
                     model_hint: String::new(),
                     use_tools: false,
+                    base_url: String::new(),
                 }
             } else {
                 // No reasoning variant — use primary model
@@ -190,6 +211,7 @@ pub fn select_route(task_type: &TaskType, settings: &AppSettings) -> RouteResult
                     api_key: settings.primary_api_key.clone(),
                     model_hint: String::new(),
                     use_tools: true,
+                    base_url: String::new(),
                 }
             }
         }
@@ -199,6 +221,7 @@ pub fn select_route(task_type: &TaskType, settings: &AppSettings) -> RouteResult
             api_key: settings.primary_api_key.clone(),
             model_hint: String::new(),
             use_tools: true,
+            base_url: String::new(),
         },
     }
 }
@@ -344,5 +367,44 @@ mod tests {
         let route = select_route(&TaskType::Search, &settings);
         assert_eq!(route.provider, "deepseek-v3");
         assert!(route.use_tools);
+    }
+
+    #[test]
+    fn test_route_custom_openai() {
+        let mut settings = default_settings();
+        settings.primary_model = "custom-openai".to_string();
+        settings.primary_api_key = "".to_string();
+        settings.custom_openai_base_url = "http://localhost:11434".to_string();
+        settings.custom_openai_model_name = "llama3".to_string();
+        settings.custom_openai_supports_tools = false;
+
+        let route = select_route(&TaskType::General, &settings);
+        assert_eq!(route.provider, "custom-openai");
+        assert_eq!(route.base_url, "http://localhost:11434");
+        assert_eq!(route.model_hint, "llama3");
+        assert!(!route.use_tools);
+        assert!(route.api_key.is_empty());
+    }
+
+    #[test]
+    fn test_route_custom_openai_with_tools() {
+        let mut settings = default_settings();
+        settings.primary_model = "custom-openai".to_string();
+        settings.primary_api_key = "gsk-test".to_string();
+        settings.custom_openai_base_url = "https://api.groq.com/openai".to_string();
+        settings.custom_openai_model_name = "llama-3.3-70b-versatile".to_string();
+        settings.custom_openai_supports_tools = true;
+
+        let route = select_route(&TaskType::Analysis, &settings);
+        assert_eq!(route.provider, "custom-openai");
+        assert!(route.use_tools);
+        assert_eq!(route.api_key, "gsk-test");
+    }
+
+    #[test]
+    fn test_provider_capabilities_custom_openai() {
+        let caps = get_provider_capabilities("custom-openai");
+        assert_eq!(caps.primary_provider, "custom-openai");
+        assert!(caps.reasoning_provider.is_none());
     }
 }
