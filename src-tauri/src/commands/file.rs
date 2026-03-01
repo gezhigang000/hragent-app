@@ -11,25 +11,48 @@ fn resolve_stored_path(
     file_id: &str,
     conversation_id: &str,
 ) -> Result<String, String> {
+    log::info!(
+        "[FILE] resolve_stored_path: file_id={}, conversation_id={}",
+        file_id, conversation_id
+    );
+
     // Try uploaded_files first
-    if let Some(record) = db.get_uploaded_file_for_conversation(file_id, conversation_id)
-        .map_err(|e| e.to_string())?
-    {
-        if let Some(path) = record.get("storedPath").and_then(|v| v.as_str()) {
-            return Ok(path.to_string());
+    match db.get_uploaded_file_for_conversation(file_id, conversation_id) {
+        Ok(Some(record)) => {
+            if let Some(path) = record.get("storedPath").and_then(|v| v.as_str()) {
+                log::info!("[FILE] Found uploaded file: storedPath={}", path);
+                return Ok(path.to_string());
+            }
+        }
+        Ok(None) => {
+            log::debug!("[FILE] Not in uploaded_files");
+        }
+        Err(e) => {
+            log::warn!("[FILE] Error checking uploaded_files: {}", e);
         }
     }
 
     // Fall back to generated_files
-    if let Some(record) = db.get_generated_file_for_conversation(file_id, conversation_id)
-        .map_err(|e| e.to_string())?
-    {
-        if let Some(path) = record.get("storedPath").and_then(|v| v.as_str()) {
-            return Ok(path.to_string());
+    match db.get_generated_file_for_conversation(file_id, conversation_id) {
+        Ok(Some(record)) => {
+            if let Some(path) = record.get("storedPath").and_then(|v| v.as_str()) {
+                log::info!("[FILE] Found generated file: storedPath={}", path);
+                return Ok(path.to_string());
+            }
+            log::warn!("[FILE] Generated file record found but no storedPath field: {:?}", record);
+        }
+        Ok(None) => {
+            log::warn!("[FILE] Not in generated_files either");
+        }
+        Err(e) => {
+            log::warn!("[FILE] Error checking generated_files: {}", e);
         }
     }
 
-    Err("File not found or does not belong to this conversation".to_string())
+    Err(format!(
+        "File not found: file_id={}, conversation_id={}",
+        file_id, conversation_id
+    ))
 }
 
 /// Upload a file to the workspace.
@@ -77,6 +100,14 @@ pub async fn open_generated_file(
 ) -> Result<(), String> {
     let stored_path = resolve_stored_path(&db, &file_id, &conversation_id)?;
     let full_path = file_mgr.full_path(&stored_path);
+    log::info!(
+        "[FILE] open_generated_file: stored_path={}, full_path={}, exists={}",
+        stored_path, full_path.display(), full_path.exists()
+    );
+
+    if !full_path.exists() {
+        return Err(format!("File does not exist: {}", full_path.display()));
+    }
 
     // Open with system default application
     #[cfg(target_os = "macos")]
@@ -100,6 +131,14 @@ pub async fn reveal_file_in_folder(
 ) -> Result<(), String> {
     let stored_path = resolve_stored_path(&db, &file_id, &conversation_id)?;
     let full_path = file_mgr.full_path(&stored_path);
+    log::info!(
+        "[FILE] reveal_file_in_folder: stored_path={}, full_path={}, exists={}",
+        stored_path, full_path.display(), full_path.exists()
+    );
+
+    if !full_path.exists() {
+        return Err(format!("File does not exist: {}", full_path.display()));
+    }
 
     // Reveal in OS file manager
     #[cfg(target_os = "macos")]

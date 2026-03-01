@@ -32,6 +32,11 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
 
+            // Initialize prompt store from external .md files
+            let resource_dir = app.path().resource_dir()
+                .unwrap_or_else(|_| app_data_dir.clone());
+            llm::prompts::init_prompts(&resource_dir, &app_data_dir);
+
             // Initialize file-based storage
             let db = Arc::new(
                 storage::file_store::AppStorage::new(&app_data_dir)

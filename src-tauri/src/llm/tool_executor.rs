@@ -17,6 +17,7 @@ use uuid::Uuid;
 use crate::llm::streaming::ToolCall;
 use crate::python::parser;
 use crate::python::runner::PythonRunner;
+use crate::search::bing::BingClient;
 use crate::search::tavily::TavilyClient;
 use crate::search::searxng::SearxngClient;
 use crate::storage::file_store::AppStorage;
@@ -117,41 +118,15 @@ fn optional_f64(args: &Value, key: &str, default: f64) -> f64 {
 // Tool handlers
 // ─────────────────────────────────────────────────
 
-/// 1. web_search — search the web via Tavily (if key configured) or free SearXNG fallback.
+/// 1. web_search — search the web via Bing CN (free, no key) first, SearXNG second, Tavily as fallback.
 async fn handle_web_search(ctx: &ToolContext, args: &Value) -> Result<String> {
     let query = require_str(args, "query")?;
     let max_results = optional_i64(args, "max_results", 5) as u32;
 
-    // Try Tavily first if an API key is available
-    if let Some(api_key) = ctx.tavily_api_key.as_deref() {
-        let client = TavilyClient::new(api_key.to_string());
-        match client.search(query, true, max_results).await {
-            Ok(response) => {
-                let mut output = String::new();
-                if let Some(answer) = &response.answer {
-                    output.push_str(&format!("**Summary:** {}\n\n", answer));
-                }
-                for (i, result) in response.results.iter().enumerate() {
-                    output.push_str(&format!(
-                        "{}. **{}**\n   URL: {}\n   {}\n\n",
-                        i + 1, result.title, result.url, result.content
-                    ));
-                }
-                if output.is_empty() {
-                    output = "No search results found.".to_string();
-                }
-                return Ok(output);
-            }
-            Err(e) => {
-                info!("Tavily search failed, falling back to SearXNG: {}", e);
-            }
-        }
-    }
-
-    // Fallback: use free SearXNG (no API key needed)
-    let client = SearxngClient::new();
-    match client.search(query, max_results).await {
-        Ok(results) => {
+    // Try Bing CN first (free, no API key, accessible from China)
+    let bing = BingClient::new();
+    match bing.search(query, max_results).await {
+        Ok(results) if !results.is_empty() => {
             let mut output = String::new();
             for (i, result) in results.iter().enumerate() {
                 output.push_str(&format!(
@@ -159,19 +134,67 @@ async fn handle_web_search(ctx: &ToolContext, args: &Value) -> Result<String> {
                     i + 1, result.title, result.url, result.content
                 ));
             }
-
-            if output.is_empty() {
-                output = "No search results found.".to_string();
-            }
-
-            Ok(output)
+            return Ok(output);
+        }
+        Ok(_) => {
+            info!("Bing returned empty results, trying SearXNG");
         }
         Err(e) => {
-            info!("SearXNG search also failed: {}", e);
-            // Return a non-error result so the LLM doesn't retry infinitely
-            Ok("[搜索不可用] Tavily 和 SearXNG 搜索均失败。请基于已有知识回答，不要编造搜索结果。".to_string())
+            info!("Bing search failed, trying SearXNG: {}", e);
         }
     }
+
+    // Try SearXNG second (free, no API key needed)
+    let client = SearxngClient::new();
+    match client.search(query, max_results).await {
+        Ok(results) if !results.is_empty() => {
+            let mut output = String::new();
+            for (i, result) in results.iter().enumerate() {
+                output.push_str(&format!(
+                    "{}. **{}**\n   URL: {}\n   {}\n\n",
+                    i + 1, result.title, result.url, result.content
+                ));
+            }
+            return Ok(output);
+        }
+        Ok(_) => {
+            info!("SearXNG returned empty results, falling back to Tavily");
+        }
+        Err(e) => {
+            info!("SearXNG search failed, falling back to Tavily: {}", e);
+        }
+    }
+
+    // Fallback: Tavily (requires API key)
+    if let Some(api_key) = ctx.tavily_api_key.as_deref() {
+        if !api_key.is_empty() {
+            let client = TavilyClient::new(api_key.to_string());
+            match client.search(query, true, max_results).await {
+                Ok(response) => {
+                    let mut output = String::new();
+                    if let Some(answer) = &response.answer {
+                        output.push_str(&format!("**Summary:** {}\n\n", answer));
+                    }
+                    for (i, result) in response.results.iter().enumerate() {
+                        output.push_str(&format!(
+                            "{}. **{}**\n   URL: {}\n   {}\n\n",
+                            i + 1, result.title, result.url, result.content
+                        ));
+                    }
+                    if output.is_empty() {
+                        output = "No search results found.".to_string();
+                    }
+                    return Ok(output);
+                }
+                Err(e) => {
+                    info!("Tavily search also failed: {}", e);
+                }
+            }
+        }
+    }
+
+    // All failed
+    Ok("[搜索不可用] Bing、SearXNG 和 Tavily 搜索均失败。请基于已有知识回答，不要编造搜索结果。".to_string())
 }
 
 /// 2. execute_python — run arbitrary Python code.
