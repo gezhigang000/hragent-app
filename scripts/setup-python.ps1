@@ -19,7 +19,7 @@ if (Test-Path $PYTHON_BIN) {
         Write-Host "Python $PYTHON_VERSION already exists at $PYTHON_BIN, skipping download."
         Write-Host "To force re-download, delete $TARGET_DIR\ and re-run."
         Write-Host "Installing pip dependencies..."
-        & $PYTHON_BIN -m pip install -r $REQUIREMENTS --no-cache-dir -q
+        & $PYTHON_BIN -m pip install -r $REQUIREMENTS --only-binary :all: --no-cache-dir -q
         Write-Host "Done."
         exit 0
     }
@@ -92,7 +92,8 @@ Write-Host "Python binary: $PYTHON_BIN"
 
 # ─── Install pip dependencies ──────────────────────────────────────
 Write-Host "Installing pip dependencies from $REQUIREMENTS..."
-& $PYTHON_BIN -m pip install -r $REQUIREMENTS --no-cache-dir -q
+# --only-binary :all: — force pre-built wheels, never compile C extensions
+& $PYTHON_BIN -m pip install -r $REQUIREMENTS --only-binary :all: --no-cache-dir -q
 
 # ─── Slim down ─────────────────────────────────────────────────────
 Write-Host "Removing unnecessary files to reduce bundle size..."

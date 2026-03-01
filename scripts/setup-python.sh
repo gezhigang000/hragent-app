@@ -46,7 +46,7 @@ if [ -x "${PYTHON_BIN}" ]; then
         echo "To force re-download, delete ${TARGET_DIR}/ and re-run."
         # Still install pip deps in case requirements.txt changed
         echo "Installing pip dependencies..."
-        "${PYTHON_BIN}" -m pip install -r "${REQUIREMENTS}" --no-cache-dir -q
+        "${PYTHON_BIN}" -m pip install -r "${REQUIREMENTS}" --only-binary :all: --no-cache-dir -q
         echo "Done."
         exit 0
     fi
@@ -76,7 +76,9 @@ echo "Python binary: ${PYTHON_BIN}"
 
 # ─── Install pip dependencies ──────────────────────────────────────
 echo "Installing pip dependencies from ${REQUIREMENTS}..."
-"${PYTHON_BIN}" -m pip install -r "${REQUIREMENTS}" --no-cache-dir -q
+# --only-binary :all: — force pre-built wheels only, never compile C extensions
+# (avoids needing system build tools like pkg-config, cairo, etc.)
+"${PYTHON_BIN}" -m pip install -r "${REQUIREMENTS}" --only-binary :all: --no-cache-dir -q
 
 # ─── Slim down ─────────────────────────────────────────────────────
 echo "Removing unnecessary files to reduce bundle size..."
